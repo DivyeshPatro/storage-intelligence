@@ -8,7 +8,7 @@ function Write-CiAnnotation {
     $size = 0
     $part = 1
     foreach ($line in $Lines + @($null)) {
-        if ($null -eq $line -or ($size + $line.Length) -gt 3500) {
+        if ($null -eq $line -or ($size + $line.Length) -gt 30000) {
             if ($chunk.Count -gt 0) {
                 $msg = ($chunk -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
                 # Straight to the console: Write-Output inside a function would become its return value.

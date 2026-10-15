@@ -1,0 +1,21 @@
+{
+ "Root": "E:\\bench",
+ "Mode": "Fast",
+ "LinkCounts": "RetainedFiles",
+ "CacheState": "warm",
+ "Seconds": 0.328939,
+ "Entries": 101000,
+ "Directories": 2167,
+ "EntriesPerSecond": 307047.8112963194,
+ "BaselineWorkingSet": 25579520,
+ "BaselinePrivateBytes": 8237056,
+ "PeakWorkingSet": 52559872,
+ "PeakPrivateBytes": 41082880,
+ "PeakManagedHeap": 25183176,
+ "AfterWorkingSet": 46714880,
+ "AfterPrivateBytes": 26058752,
+ "PeakOpenDirectories": 221,
+ "LinkRecords": 101000,
+ "HardLinks": "Reconciled None",
+ "Complete": true
+}

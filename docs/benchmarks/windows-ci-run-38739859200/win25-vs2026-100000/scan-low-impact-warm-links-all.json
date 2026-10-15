@@ -1,0 +1,21 @@
+{
+ "Root": "E:\\bench",
+ "Mode": "LowImpact",
+ "LinkCounts": "All",
+ "CacheState": "warm",
+ "Seconds": 9.0119955,
+ "Entries": 101000,
+ "Directories": 2167,
+ "EntriesPerSecond": 11207.284779491956,
+ "BaselineWorkingSet": 25653248,
+ "BaselinePrivateBytes": 8380416,
+ "PeakWorkingSet": 54501376,
+ "PeakPrivateBytes": 44167168,
+ "PeakManagedHeap": 30341008,
+ "AfterWorkingSet": 48582656,
+ "AfterPrivateBytes": 26353664,
+ "PeakOpenDirectories": 65,
+ "LinkRecords": 101000,
+ "HardLinks": "Reconciled None",
+ "Complete": true
+}

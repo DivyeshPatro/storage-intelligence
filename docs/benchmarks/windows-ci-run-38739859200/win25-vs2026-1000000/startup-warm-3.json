@@ -1,0 +1,10 @@
+{
+ "ProcessStartToMainMs": 58.7529,
+ "MainToReadyMs": 41.6201,
+ "ProcessStartToReadyMs": 100.373,
+ "ReadyWorkingSet": 27516928,
+ "ReadyPrivateBytes": 22822912,
+ "IdleWorkingSet": 27738112,
+ "IdlePrivateBytes": 8220672,
+ "ExternalWallMs": 5164.7267
+}

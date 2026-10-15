@@ -1,0 +1,8 @@
+{
+ "Root": "E:\\bench",
+ "Files": 3000000,
+ "Directories": 60000,
+ "HardLinks": 30000,
+ "BytesWritten": 1844738795,
+ "Seconds": 290.1596014
+}

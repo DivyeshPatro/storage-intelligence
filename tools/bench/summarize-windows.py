@@ -48,7 +48,7 @@ print('| Run | Mode | Links | Cache | CPUs | Time (s) | Entries/s | Baseline WS 
 print('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
 for path in sorted(glob.glob(os.path.join(d, 'scan-*.json'))):
     s = load(os.path.basename(path))
-    cpus = '2 (affinity)' if 'affinity' in (s['Environment'].get('Notes') or '') else 'all'
+    cpus = '2 (affinity)' if path.endswith('-2cpu.json') else 'all'
     name = os.path.basename(path)[5:-5]
     print(f"| {name} | {s['Mode']} | {s['LinkCounts']} | {s['CacheState']} | {cpus} | {s['Seconds']:.1f} | {s['EntriesPerSecond']:,.0f} | "
           f"{mb(s['BaselineWorkingSet'])} | {mb(s['PeakWorkingSet'])} | {mb(s['PeakPrivateBytes'])} | {mb(s['PeakManagedHeap'])} | "
@@ -62,7 +62,8 @@ print('|---|---|---|---|---|---|')
 for path in sorted(glob.glob(os.path.join(d, 'cancel-*.json'))):
     c = load(os.path.basename(path))
     lat = c['Latency']
-    print(f"| {c['Mode']} | {c['FullScanSeconds']:.1f} | {lat['Count']}/{len(c['Trials'])} | {lat['P50']:.1f} | {lat['P95']:.1f} | {lat['Max']:.1f} |")
+    trials = len(c['Trials']) if 'Trials' in c else '?'
+    print(f"| {c['Mode']} | {c['FullScanSeconds']:.1f} | {lat['Count']}/{trials} | {lat['P50']:.1f} | {lat['P95']:.1f} | {lat['Max']:.1f} |")
 print()
 
 print('### Foreground responsiveness (separate probe process; 4 KiB unbuffered random reads at QD1 on the same volume, and 1 ms timer lateness)')

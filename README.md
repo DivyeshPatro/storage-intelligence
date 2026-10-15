@@ -13,7 +13,7 @@ UI and no cleanup functionality.
 |---|---|---|
 | M0a | Accounting core: streaming aggregation, hard-link reconciliation, coverage, uncertainty; property-based tests against a brute-force oracle | Provisionally accepted |
 | **M0b** | Windows scanner, reference scanner, fixture generator, CI volume probe, allocation validation | Pending review — [results](docs/m0b-validation-results.md), [CI capabilities](docs/ci-capabilities.md) |
-| M0c | Measurements (CI, constrained VM); physical HDD validation pending hardware | Not started |
+| M0c | Preliminary measurements (Linux container core, Windows CI); physical HDD pending | Preliminary — [report](docs/m0c-benchmark-report.md) |
 | M1+ | Minimal WPF shell for R1 | Blocked until accounting tests pass on Windows fixtures |
 
 ## Layout
