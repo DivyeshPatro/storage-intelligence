@@ -1,0 +1,84 @@
+{
+  "Environment": {
+    "Machine": "vm",
+    "Kind": "Linux cloud container (development environment; not Windows, not physical)",
+    "Os": "Ubuntu 24.04.5 LTS",
+    "LogicalProcessors": 4,
+    "Processor": "X64",
+    "PhysicalMemoryBytes": 10757766144,
+    "Runtime": ".NET 10.0.12",
+    "GcMode": "workstation, latency Batch",
+    "ProcessAffinityMask": -1,
+    "Notes": ""
+  },
+  "Store": "parents",
+  "Entries": 100000,
+  "Directories": 2147,
+  "HardLinkEntries": 990,
+  "Seconds": 0.4450331,
+  "EntriesPerSecond": 224702.38730557344,
+  "BaselineWorkingSet": 29286400,
+  "BaselinePrivateBytes": 75845632,
+  "PeakWorkingSet": 59604992,
+  "PeakPrivateBytes": 118726656,
+  "PeakManagedHeap": 27197104,
+  "RunBytes": 1150300,
+  "RunCount": 1,
+  "PeakOpenDirectories": 4,
+  "AfterWorkingSet": 54943744,
+  "AfterPrivateBytes": 104861696,
+  "RootAllocated": 6694121472,
+  "RootDistinctFiles": 99010,
+  "Timeline": [
+    {
+      "Item1": 0.0027857,
+      "Item2": 31379456,
+      "Item3": 84406272
+    },
+    {
+      "Item1": 0.0538275,
+      "Item2": 37322752,
+      "Item3": 103067648
+    },
+    {
+      "Item1": 0.1046525,
+      "Item2": 45535232,
+      "Item3": 109432832
+    },
+    {
+      "Item1": 0.1554929,
+      "Item2": 51527680,
+      "Item3": 112967680
+    },
+    {
+      "Item1": 0.206125,
+      "Item2": 55070720,
+      "Item3": 115044352
+    },
+    {
+      "Item1": 0.2568162,
+      "Item2": 55099392,
+      "Item3": 115044352
+    },
+    {
+      "Item1": 0.3074133,
+      "Item2": 55349248,
+      "Item3": 115179520
+    },
+    {
+      "Item1": 0.358091,
+      "Item2": 56582144,
+      "Item3": 115834880
+    },
+    {
+      "Item1": 0.4088949,
+      "Item2": 59604992,
+      "Item3": 118726656
+    },
+    {
+      "Item1": 0.4598137,
+      "Item2": 54845440,
+      "Item3": 104730624
+    }
+  ]
+}

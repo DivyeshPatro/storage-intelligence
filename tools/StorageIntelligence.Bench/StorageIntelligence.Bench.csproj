@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>StorageIntelligence.Bench</RootNamespace>
+    <AssemblyName>si-bench</AssemblyName>
+    <!-- The runtime configuration planned for the product (v0.2 §2): workstation, non-concurrent GC. -->
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- One options instance per process; CA1869 misfires on top-level statements. -->
+    <NoWarn>$(NoWarn);CA1869</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\StorageIntelligence.Scanning.Windows\StorageIntelligence.Scanning.Windows.csproj" />
+    <ProjectReference Include="..\StorageIntelligence.Validation\StorageIntelligence.Validation.csproj" />
+  </ItemGroup>
+
+</Project>

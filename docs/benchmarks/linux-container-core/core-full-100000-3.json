@@ -1,0 +1,94 @@
+{
+  "Environment": {
+    "Machine": "vm",
+    "Kind": "Linux cloud container (development environment; not Windows, not physical)",
+    "Os": "Ubuntu 24.04.5 LTS",
+    "LogicalProcessors": 4,
+    "Processor": "X64",
+    "PhysicalMemoryBytes": 10757766144,
+    "Runtime": ".NET 10.0.12",
+    "GcMode": "workstation, latency Batch",
+    "ProcessAffinityMask": -1,
+    "Notes": ""
+  },
+  "Store": "full",
+  "Entries": 100000,
+  "Directories": 2147,
+  "HardLinkEntries": 990,
+  "Seconds": 0.549148,
+  "EntriesPerSecond": 182100.27169360538,
+  "BaselineWorkingSet": 29396992,
+  "BaselinePrivateBytes": 75862016,
+  "PeakWorkingSet": 58384384,
+  "PeakPrivateBytes": 117624832,
+  "PeakManagedHeap": 26188056,
+  "RunBytes": 1150300,
+  "RunCount": 1,
+  "PeakOpenDirectories": 4,
+  "AfterWorkingSet": 52744192,
+  "AfterPrivateBytes": 102797312,
+  "RootAllocated": 6694121472,
+  "RootDistinctFiles": 99010,
+  "Timeline": [
+    {
+      "Item1": 0.002973,
+      "Item2": 31510528,
+      "Item3": 84422656
+    },
+    {
+      "Item1": 0.054659,
+      "Item2": 38002688,
+      "Item3": 103653376
+    },
+    {
+      "Item1": 0.1051397,
+      "Item2": 44875776,
+      "Item3": 108978176
+    },
+    {
+      "Item1": 0.1560523,
+      "Item2": 50270208,
+      "Item3": 112316416
+    },
+    {
+      "Item1": 0.2068852,
+      "Item2": 54743040,
+      "Item3": 114905088
+    },
+    {
+      "Item1": 0.2581054,
+      "Item2": 54824960,
+      "Item3": 114905088
+    },
+    {
+      "Item1": 0.308863,
+      "Item2": 54824960,
+      "Item3": 114905088
+    },
+    {
+      "Item1": 0.359586,
+      "Item2": 54947840,
+      "Item3": 114905088
+    },
+    {
+      "Item1": 0.4101488,
+      "Item2": 55402496,
+      "Item3": 114905088
+    },
+    {
+      "Item1": 0.4609135,
+      "Item2": 55562240,
+      "Item3": 114905088
+    },
+    {
+      "Item1": 0.5117413,
+      "Item2": 55668736,
+      "Item3": 115007488
+    },
+    {
+      "Item1": 0.5626158,
+      "Item2": 58384384,
+      "Item3": 117624832
+    }
+  ]
+}
