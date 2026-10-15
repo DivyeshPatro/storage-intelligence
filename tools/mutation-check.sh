@@ -31,12 +31,13 @@ mutations=(
   "$A/ScanAggregator.cs @@ s/parent.ChildCoverage += subtreeCoverage;/parent.ChildCoverage += record.OwnCoverage;/ @@ coverage not rolled up"
   "$A/HardLinkRuns.cs @@ s/return c != 0 ? c : a.Directory.Value.CompareTo(b.Directory.Value);/return 0;/ @@ sort comparator broken"
   "$A/HardLinkRuns.cs @@ s/pos += WriteVarint(buffer.AsSpan(pos), highDelta == 0 ? r.FileId.Low - previous.Low : r.FileId.Low);/pos += WriteVarint(buffer.AsSpan(pos), r.FileId.Low);/ @@ ID delta encoding broken"
-  "$A/HardLinkRuns.cs @@ s/if (available - worstCase < _guard.ReserveBytes)/if (false)/ @@ space guard disabled"
+  "$A/HardLinkRuns.cs @@ s/if (available - worstCase < _guard.ReserveBytes)/if (available - worstCase < long.MinValue)/ @@ space guard disabled"
   "$A/Model.cs @@ s/SkippedReparseDirectories == 0;/true;/ @@ skipped reparse directories ignored by completeness"
 )
 
 summary="$log_dir/mutation-summary.txt"
 : > "$summary"
+invalid=0
 for entry in "${mutations[@]}"; do
   # Fields are separated by ' @@ ' because sed expressions may contain '|'.
   file="${entry%% @@ *}"; rest="${entry#* @@ }"; expr="${rest%% @@ *}"; label="${rest#* @@ }"
@@ -48,6 +49,10 @@ for entry in "${mutations[@]}"; do
   safe=$(echo "$label" | tr ' ' '-' | tr -cd '[:alnum:]-')
   if dotnet test tests/StorageIntelligence.Accounting.Tests > "$log_dir/mutation-$safe.log" 2>&1; then
     echo "SURVIVED     $label" | tee -a "$summary"
+  elif grep -q " error CS" "$log_dir/mutation-$safe.log"; then
+    # A mutant that does not compile proves nothing about the tests.
+    echo "INVALID      $label  (does not compile)" | tee -a "$summary"
+    invalid=1
   else
     echo "killed       $label  ($(grep -Eo 'Failed: +[0-9]+' "$log_dir/mutation-$safe.log" | head -1))" | tee -a "$summary"
   fi
@@ -61,4 +66,4 @@ dotnet build > "$log_dir/final-build.log" 2>&1
 dotnet test --no-build > "$log_dir/final-test.log" 2>&1 && final=passed || final=FAILED
 echo "final clean rebuild at $(git rev-parse --short HEAD): tests $final" | tee -a "$summary"
 grep -E "Passed!|Failed!|Skipped!" "$log_dir/final-test.log" | tee -a "$summary"
-[ "$final" = passed ]
+[ "$final" = passed ] && [ "$invalid" = 0 ]
