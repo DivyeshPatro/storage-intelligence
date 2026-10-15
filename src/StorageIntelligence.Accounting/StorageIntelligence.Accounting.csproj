@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>StorageIntelligence.Accounting</RootNamespace>
+    <!-- Platform-independent by design: no Windows APIs in this assembly. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="StorageIntelligence.Accounting.Tests" />
+  </ItemGroup>
+
+</Project>

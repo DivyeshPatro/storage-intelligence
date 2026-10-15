@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StorageIntelligence.Accounting/StorageIntelligence.Accounting.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StorageIntelligence.Accounting.Tests/StorageIntelligence.Accounting.Tests.csproj" />
+  </Folder>
+</Solution>
