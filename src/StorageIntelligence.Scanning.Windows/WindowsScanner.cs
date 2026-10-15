@@ -324,7 +324,14 @@ public sealed class WindowsScanner
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
                     // Never leave the consumer waiting: report the directory as an incomplete listing.
-                    output.TryWrite(new Batch(item, [], true, 0, true, UnexpectedWorkerError, false));
+                    try
+                    {
+                        output.WriteAsync(new Batch(item, [], true, 0, true, UnexpectedWorkerError, false), token).AsTask().GetAwaiter().GetResult();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
                 }
             }
         }

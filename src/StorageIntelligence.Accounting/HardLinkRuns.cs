@@ -231,7 +231,7 @@ public sealed class InMemoryRunStore : IRunStore
 {
     private readonly List<MemoryStream> _runs = [];
 
-    public long BytesWritten => _runs.Sum(r => r.Length);
+    public long BytesWritten => _runs.Sum(r => r.CanSeek ? r.Length : 0); // merged runs are already closed
 
     public Stream CreateRun()
     {
@@ -280,7 +280,7 @@ public sealed class TempFileRunStore : IRunStore
 
     public string Directory => _directory;
 
-    public long BytesWritten => _runs.Sum(r => r.Length);
+    public long BytesWritten => _runs.Sum(r => r.CanSeek ? r.Length : 0); // merged runs are already closed
 
     public Stream CreateRun()
     {

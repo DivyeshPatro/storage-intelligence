@@ -167,7 +167,8 @@ public static unsafe class ReferenceScanner
         string key = hardLinks && ValidationNative.GetFileInformationByHandleEx(handle, ValidationNative.FileIdInfo, &id, (uint)sizeof(ValidationNative.FILE_ID_INFO))
             ? $"{id.VolumeSerialNumber:x}:{id.FileIdHigh:x16}{id.FileIdLow:x16}"
             : "entry:" + rel;
-        (bool wof, _) = ValidationNative.WofState(fullPath);
+        // Extended path: a plain path would let Win32 map device names such as 'CON' to the console device.
+        (bool wof, _) = ValidationNative.WofState(extended);
         return new ReferenceFile(
             rel,
             dirRel,
