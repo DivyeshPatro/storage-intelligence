@@ -77,6 +77,7 @@ public static class AllocationHarness
                 continue;
             }
 
+            Console.Error.WriteLine($"[{DateTime.UtcNow:HH:mm:ss.fff}] allocation: {caseName}");
             var measured = new List<AllocationTrial>();
             string? failure = null;
             for (int i = 0; i < trials.Length; i++)

@@ -37,6 +37,9 @@ catch (InvalidOperationException e) when (e.Message.StartsWith("Refusing", Strin
     return 2;
 }
 
+static void Progress(string message) =>
+    Console.Error.WriteLine($"[{DateTime.UtcNow:HH:mm:ss.fff}] {message}");
+
 int Usage()
 {
     Console.Error.WriteLine("usage: si-validate fixture|scan|validate|allocation|release-denials [options]");
@@ -89,7 +92,9 @@ int Validate()
     FixtureManifest manifest = JsonSerializer.Deserialize<FixtureManifest>(File.ReadAllText(Arg("manifest")), options)!;
     string fs = Arg("fs");
 
+    Progress("reference scan");
     ReferenceResult reference = ReferenceScanner.Scan(fixtureRoot, fs);
+    Progress($"reference scan done: {reference.Files.Count} files, {reference.Directories.Count} directories");
     Write(Path.Combine(outDir, "reference.json"), reference);
 
     var lines = new List<string> { $"## Scanner validation: {fs}", "", "| Scan | Directories | Files | Mismatches | Result |", "|---|---|---|---|---|" };
@@ -117,8 +122,10 @@ int Validate()
                 }
             },
         };
+        Progress($"production scan {mode}/{links}");
         ScanResult scan = WindowsScanner.Scan(fixtureRoot, scanOptions);
         string name = $"{mode}-{links}";
+        Progress($"production scan {name} done in {scan.Duration.TotalMilliseconds:F0} ms");
         results[name] = scan;
         Write(Path.Combine(outDir, $"scan-{name}.json"), Report(scan));
         Write(Path.Combine(outDir, $"files-{name}.json"), files);

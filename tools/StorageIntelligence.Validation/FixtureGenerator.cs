@@ -212,6 +212,7 @@ public sealed class FixtureGenerator
 
     private void Attempt(string feature, Action action)
     {
+        Console.Error.WriteLine($"[{DateTime.UtcNow:HH:mm:ss.fff}] fixture: {feature}");
         try
         {
             action();
