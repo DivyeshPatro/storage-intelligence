@@ -18,6 +18,24 @@ $result = [ordered]@{
     volumes    = @()
 }
 
+
+Add-Type -Namespace SiProbe -Name Native -MemberDefinition @'
+[DllImport("wofutil.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+public static extern int WofIsExternalFile(string FilePath, out int IsExternalFile, out uint Provider, IntPtr ExternalFileInfo, ref uint BufferLength);
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+public static extern uint GetCompressedFileSizeW(string lpFileName, out uint lpFileSizeHigh);
+'@
+
+# WOF hides its own reparse point from FSCTL queries, so fsutil cannot detect it; ask the WOF API instead.
+function Get-WofState([string] $Path) {
+    [int] $external = 0; [uint32] $provider = 0; [uint32] $len = 0
+    $hr = [SiProbe.Native]::WofIsExternalFile($Path, [ref] $external, [ref] $provider, [IntPtr]::Zero, [ref] $len)
+    [uint32] $high = 0
+    $low = [SiProbe.Native]::GetCompressedFileSizeW($Path, [ref] $high)
+    $compressed = ([uint64] $high -shl 32) -bor $low
+    return "hr=0x{0:X8} external={1} provider={2} logical={3} compressedSize={4}" -f $hr, $external, $provider, (Get-Item $Path).Length, $compressed
+}
+
 function Test-Feature([string] $Name, [scriptblock] $Body) {
     try {
         $detail = & $Body
@@ -75,9 +93,9 @@ foreach ($fs in 'NTFS', 'ReFS', 'FAT32', 'exFAT') {
             $w = Join-Path $dir 'wof.txt'
             Set-Content -Path $w -Value ('windows overlay filter ' * 50000) -Encoding ascii
             Invoke-Native compact.exe @('/c', '/exe:xpress4k', $w) | Out-Null
-            $q = Invoke-Native fsutil @('reparsepoint', 'query', $w)
-            if ($q -notmatch '0x80000017') { throw "WOF reparse tag not present: $q" }
-            'IO_REPARSE_TAG_WOF present'
+            $state = Get-WofState $w
+            if ($state -notmatch 'external=1') { throw "Not WOF-backed after compact: $state" }
+            $state
         }
         $entry.features += Test-Feature 'filter_instances' {
             $letter = $vol.Root.Substring(0, 2)
@@ -104,10 +122,10 @@ foreach ($base in @($env:RUNNER_TEMP, [IO.Path]::GetTempPath())) {
     $extra.features += Test-Feature "wof_compression ($([IO.Path]::GetPathRoot($w)))" {
         Set-Content -Path $w -Value ('windows overlay filter ' * 50000) -Encoding ascii
         try {
-            $out = Invoke-Native compact.exe @('/c', '/exe:xpress4k', $w)
-            $q = & fsutil reparsepoint query $w 2>&1 | Out-String
-            if ($q -notmatch '0x80000017') { throw "WOF reparse tag not present. compact said: $out" }
-            'IO_REPARSE_TAG_WOF present'
+            Invoke-Native compact.exe @('/c', '/exe:xpress4k', $w) | Out-Null
+            $state = Get-WofState $w
+            if ($state -notmatch 'external=1') { throw "Not WOF-backed after compact: $state" }
+            $state
         }
         finally { Remove-Item $w -Force -ErrorAction SilentlyContinue }
     }
