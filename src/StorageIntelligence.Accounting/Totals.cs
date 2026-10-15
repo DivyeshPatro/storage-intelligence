@@ -133,14 +133,20 @@ public sealed class InMemoryScanStore : IScanSink, IParentLookup
 }
 
 /// <summary>Whole-scan result: aggregation, reconciliation and the final per-extension totals.</summary>
+/// <param name="ReconciliationFailure">Why hard links were not reconciled, when <see cref="HardLinks"/> is NotReconciled.</param>
 public sealed record ScanAccounting(
     AggregationOutcome Aggregation,
     ReconciliationResult? Reconciliation,
     HardLinkStatus HardLinks,
     DirectoryTotals Root,
-    IReadOnlyDictionary<string, ExtensionStats> ExtensionTotals)
+    IReadOnlyDictionary<string, ExtensionStats> ExtensionTotals,
+    ReconciliationFailure ReconciliationFailure = ReconciliationFailure.None,
+    string? ReconciliationFailureDetail = null)
 {
-    /// <summary>Runs reconciliation (when a run writer was used) and assembles the final result.</summary>
+    /// <summary>
+    /// Runs reconciliation (when a run writer was used and not abandoned) and assembles the final result.
+    /// Any failure leaves the streaming totals in place, explicitly labelled NotReconciled (an upper bound).
+    /// </summary>
     public static ScanAccounting Build(
         AggregationOutcome aggregation,
         InMemoryScanStore store,
@@ -152,15 +158,37 @@ public sealed record ScanAccounting(
         ArgumentNullException.ThrowIfNull(policy);
 
         ReconciliationResult? reconciliation = null;
+        ReconciliationFailure failure = ReconciliationFailure.None;
+        string? detail = null;
         HardLinkStatus status;
-        if (links is not null)
+        if (!policy.FileSystemSupportsHardLinks)
         {
-            reconciliation = HardLinkReconciler.Reconcile(links.EnumerateGroups(), store, policy, aggregation.Extensions);
-            status = HardLinkStatus.Reconciled;
+            status = HardLinkStatus.NotApplicable;
+        }
+        else if (links is null)
+        {
+            status = HardLinkStatus.NotReconciled;
+            failure = ReconciliationFailure.NotRequested;
+        }
+        else if (links.IsAbandoned)
+        {
+            status = HardLinkStatus.NotReconciled;
+            failure = links.Failure;
+            detail = links.FailureDetail;
         }
         else
         {
-            status = policy.FileSystemSupportsHardLinks ? HardLinkStatus.NotReconciled : HardLinkStatus.NotApplicable;
+            try
+            {
+                reconciliation = HardLinkReconciler.Reconcile(links.EnumerateGroups(), store, policy, aggregation.Extensions);
+                status = HardLinkStatus.Reconciled;
+            }
+            catch (Exception e) when (e is InvalidDataException or IOException)
+            {
+                status = HardLinkStatus.NotReconciled;
+                failure = ReconciliationFailure.RunStoreError;
+                detail = e.Message;
+            }
         }
 
         var extensions = new Dictionary<string, ExtensionStats>(StringComparer.Ordinal);
@@ -179,6 +207,6 @@ public sealed record ScanAccounting(
         }
 
         DirectoryTotals root = store.GetTotals(aggregation.Root.Id, reconciliation, status);
-        return new ScanAccounting(aggregation, reconciliation, status, root, extensions);
+        return new ScanAccounting(aggregation, reconciliation, status, root, extensions, failure, detail);
     }
 }
