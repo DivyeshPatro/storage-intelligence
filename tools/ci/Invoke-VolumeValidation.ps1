@@ -3,7 +3,8 @@
 # as annotations. A volume type that cannot be created is reported as NOT TESTED, never as passing.
 param([Parameter(Mandatory)] [ValidateSet('NTFS', 'ReFS', 'FAT32', 'exFAT')] [string] $FileSystem,
       [Parameter(Mandatory)] [string] $OutDir,
-      [Parameter(Mandatory)] [string] $Tool)
+      [Parameter(Mandatory)] [string] $Tool,
+      [switch] $SkipAllocation)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'TestVolumes.psm1') -Force
@@ -53,12 +54,13 @@ try {
     $validateExit = Invoke-Tool 'validate' @('validate', '--root', $root, '--fs', $FileSystem, '--manifest', $manifest, '--out-dir', $OutDir)
     if ($validateExit -ne 0) { $exit = 1 }
 
-    $allocationExit = Invoke-Tool 'allocation' @('allocation', '--root', $root, '--fs', $FileSystem, '--cluster', "$($vol.ClusterSize)", '--out', (Join-Path $OutDir 'allocation.json'))
+    $allocationExit = if ($SkipAllocation) { 0 } else { Invoke-Tool 'allocation' @('allocation', '--root', $root, '--fs', $FileSystem, '--cluster', "$($vol.ClusterSize)", '--out', (Join-Path $OutDir 'allocation.json')) }
     if ($allocationExit -ne 0) { $exit = 1 }
 
     & $Tool release-denials --manifest $manifest | Out-Null
 
-    $lines = @("validate exit code: $validateExit, allocation exit code: $allocationExit", '') + $notes + @('') + (Get-Content (Join-Path $OutDir 'validate.log')) + @('') + (Get-Content (Join-Path $OutDir 'allocation.log'))
+    $lines = @("validate exit code: $validateExit, allocation exit code: $allocationExit", '') + $notes + @('') + (Get-Content (Join-Path $OutDir 'validate.log'))
+    if (-not $SkipAllocation) { $lines += @('') + (Get-Content (Join-Path $OutDir 'allocation.log')) }
     Write-CiAnnotation -Title $title -Lines $lines
 }
 finally {

@@ -1,0 +1,38 @@
+name: equivalence-repeat
+
+# Repeats scanner validation (no allocation harness) to measure how often scan-mode equivalence fails intermittently.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repeat:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-2022]
+        fs: [FAT32, exFAT, NTFS]
+        rep: [1, 2, 3]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      SI_ALLOW_TEST_VOLUMES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - shell: pwsh
+        run: dotnet build tools/StorageIntelligence.Validation -c Release -o "$env:RUNNER_TEMP/tool"
+      - name: Validate ${{ matrix.fs }} (repetition ${{ matrix.rep }})
+        shell: pwsh
+        run: ./tools/ci/Invoke-VolumeValidation.ps1 -FileSystem ${{ matrix.fs }} -OutDir "$env:RUNNER_TEMP/validation" -Tool "$env:RUNNER_TEMP/tool/si-validate.exe" -SkipAllocation
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repeat-${{ matrix.os }}-${{ matrix.fs }}-${{ matrix.rep }}
+          path: ${{ runner.temp }}/validation
