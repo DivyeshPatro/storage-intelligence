@@ -54,16 +54,37 @@ public sealed record VolumeInfo(string VolumeRoot, string FileSystemName, uint S
 }
 
 /// <summary>
-/// Which measurement cases are validated, per filesystem. Every entry must cite the validation run that
-/// established it (docs/m0b-validation-results.md). Until then a case stays uncertain.
+/// Which measurement cases are validated, per filesystem. A case is validated only when the directory-listing
+/// allocation matched the volume's settled free-space change in every trial on both CI images
+/// (docs/m0b-validation-results.md, run 38711178827). Everything else stays uncertain.
 /// </summary>
 public static class MeasurementEvidence
 {
-    public static MeasurementPolicy PolicyFor(FileSystemKind kind) => new()
+    /// <summary>Caveats that stay uncertain on a validated filesystem.</summary>
+    private const MeasurementCaveats UnprovenOnNtfs =
+        MeasurementCaveats.Compressed |       // inconsistent: free-space change exceeded every reported value
+        MeasurementCaveats.WofCompressed |    // listing reports 0; handle value matched, but only compressible data was testable
+        MeasurementCaveats.CloudPlaceholder;  // not testable on hosted runners
+
+    public static MeasurementPolicy PolicyFor(FileSystemKind kind) => kind switch
+    {
+        // Validated: plain, resident (100 B) and sparse files.
+        FileSystemKind.Ntfs => Policy(kind, validated: true, hardLinks: true, MeasurementPolicy.AllReasons & ~MeasurementCaveats.Sparse & ~MeasurementCaveats.UnvalidatedFileSystem | UnprovenOnNtfs),
+
+        // Not validated: plain-file allocation did not track free space (ReFS accounts lazily / in larger units).
+        FileSystemKind.ReFS => Policy(kind, validated: false, hardLinks: true, MeasurementPolicy.AllReasons),
+
+        // Validated: plain and resident files (the only kinds these filesystems support).
+        FileSystemKind.Fat32 or FileSystemKind.ExFat => Policy(kind, validated: true, hardLinks: false, MeasurementPolicy.AllReasons & ~MeasurementCaveats.UnvalidatedFileSystem),
+
+        _ => Policy(kind, validated: false, hardLinks: true, MeasurementPolicy.AllReasons),
+    };
+
+    private static MeasurementPolicy Policy(FileSystemKind kind, bool validated, bool hardLinks, MeasurementCaveats uncertain) => new()
     {
         FileSystem = kind,
-        FileSystemValidated = false,
-        FileSystemSupportsHardLinks = kind is not (FileSystemKind.Fat32 or FileSystemKind.ExFat),
-        UncertainReasons = MeasurementPolicy.AllReasons,
+        FileSystemValidated = validated,
+        FileSystemSupportsHardLinks = hardLinks,
+        UncertainReasons = uncertain,
     };
 }

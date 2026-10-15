@@ -217,7 +217,16 @@ public sealed class FixtureGenerator
             Dir("denied");
             File("denied\\secret.bin", 1 << 20, "denied");
             RunTool("icacls.exe", Full("denied"), "/deny", "*S-1-1-0:(OI)(CI)(RD)");
-            _manifest.InaccessibleDirectories.Add("denied");
+            try
+            {
+                // icacls can report success on filesystems without ACLs (FAT32, exFAT): verify the denial took effect.
+                _ = Directory.GetFileSystemEntries(Full("denied"));
+                throw new IOException("deny ACE had no effect on this filesystem (no ACL support); 'denied' remains readable");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                _manifest.InaccessibleDirectories.Add("denied");
+            }
         });
     }
 

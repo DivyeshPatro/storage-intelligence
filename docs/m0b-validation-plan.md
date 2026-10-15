@@ -1,6 +1,6 @@
-# M0b validation plan (draft, not started)
+# M0b validation plan
 
-M0b has **not** started. This plan incorporates the conditions attached to the v0.3 approval and must be
+Executed; results in [m0b-validation-results.md](m0b-validation-results.md). This plan incorporates the conditions attached to the v0.3 approval and must be
 reviewed before M0b is finalized. Target platform for R1: **Windows 11 x64**. Windows 10 is evaluated separately.
 
 ## 1. Correctness criteria (replaces the v0.3 "whole-volume" check)
