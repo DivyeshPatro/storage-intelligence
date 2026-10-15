@@ -74,6 +74,12 @@ foreach ($fs in 'NTFS', 'ReFS', 'FAT32', 'exFAT') {
             if ($q -notmatch '0x80000017') { throw "WOF reparse tag not present: $q" }
             'IO_REPARSE_TAG_WOF present'
         }
+        $entry.features += Test-Feature 'filter_instances' {
+            $letter = $vol.Root.Substring(0, 2)
+            $filters = (& fltmc.exe instances -v $letter 2>&1 | Out-String)
+            if ($filters -notmatch '(?im)^\s*wof\b') { throw "wof filter not attached: $filters" }
+            'wof attached'
+        }
         $entry.features += [ordered]@{ feature = 'cloud_placeholder'; status = 'not_probed'; detail = 'Requires a cloud sync provider; not available on hosted runners.' }
         $entry.features += [ordered]@{ feature = 'block_cloning'; status = 'not_probed'; detail = 'ReFS block cloning is treated as uncertain by design.' }
     }
@@ -86,6 +92,23 @@ foreach ($fs in 'NTFS', 'ReFS', 'FAT32', 'exFAT') {
     $result.volumes += $entry
 }
 
+# WOF on the runner's own volumes, where the WOF filter is normally attached.
+$extra = [ordered]@{ fileSystem = 'runner volumes'; created = $true; error = $null; clusterSize = $null; features = @() }
+foreach ($base in @($env:RUNNER_TEMP, [IO.Path]::GetTempPath())) {
+    $w = Join-Path $base ("si-wof-{0}.txt" -f [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $extra.features += Test-Feature "wof_compression ($([IO.Path]::GetPathRoot($w)))" {
+        Set-Content -Path $w -Value ('windows overlay filter ' * 50000) -Encoding ascii
+        try {
+            $out = Invoke-Native compact.exe @('/c', '/exe:xpress4k', $w)
+            $q = Invoke-Native fsutil @('reparsepoint', 'query', $w)
+            if ($q -notmatch '0x80000017') { throw "WOF reparse tag not present: $out $q" }
+            'IO_REPARSE_TAG_WOF present'
+        }
+        finally { Remove-Item $w -Force -ErrorAction SilentlyContinue }
+    }
+}
+$result.volumes += $extra
+
 $json = $result | ConvertTo-Json -Depth 6
 Set-Content -Path (Join-Path $OutDir 'capabilities.json') -Value $json -Encoding utf8
 
@@ -97,7 +120,7 @@ foreach ($v in $result.volumes) {
     }
     foreach ($f in $v.features) {
         $detail = ("$($f.detail)" -replace '\|', '/' -replace '\r?\n', ' ')
-        if ($detail.Length -gt 120) { $detail = $detail.Substring(0, 120) + '...' }
+        if ($detail.Length -gt 400) { $detail = $detail.Substring(0, 400) + '...' }
         $md += "| $($v.fileSystem) | yes (cluster $($v.clusterSize)) | $($f.feature) | $($f.status) | $detail |"
     }
 }
