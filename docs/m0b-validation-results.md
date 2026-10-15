@@ -23,7 +23,7 @@ and for all files, compared with the reference scanner and with the fixture mani
 
 The FAT32/exFAT mismatch was the generator recording `denied` as inaccessible after `icacls` reported success on a
 filesystem without ACLs; the scanner correctly measured the readable folder. The generator now verifies that a denial
-takes effect. See section 5 for the confirmation run.
+takes effect. After that fix every configuration has 0 mismatches (section 5).
 
 Compared, per directory: allocated and logical size, file entries, distinct files, directory count, inaccessible
 directories, not-followed links, skipped reparse directories, entry errors, and hard-link classification (exact when
@@ -81,6 +81,25 @@ The always-uncertain caveats are `ChangedDuringScan`, `InconsistentLinkSizes`, `
 - **Windows 11 client builds**: hosted runners are Windows Server 2022/2025.
 - **Physical HDD behaviour and low-end hardware performance**: pending; no hardware available.
 
-## 5. Confirmation run after the final fixes
+## 5. Confirmation runs after the final fixes
 
-Recorded in the M0b report (run id and results).
+Copies of every run's annotations are in [validation-logs/](validation-logs/).
+
+| Run | Commit | Result |
+|---|---|---|
+| m0b-validation 38711825938 | `92d0ce4` | Both test jobs pass. All 32 production-vs-reference comparisons (4 filesystems × 2 images × 4 scans): **0 mismatches**. One scan-mode-equivalence failure on FAT32/windows-2025 (section 6). |
+| m0b-validation 38712350472 | `bb05fd4` | **All jobs pass**: tests, 0 mismatches everywhere, scan modes identical everywhere. |
+| equivalence-repeat 38712914822 | `0dda365` | 18 repetitions (FAT32, exFAT, NTFS × 2 images × 3). 17 identical; **1 FAT32 difference** (section 6). All production-vs-reference comparisons: 0 mismatches. |
+| Local, clean build `92d0ce4` | | 47/47 accounting tests at 1,000,000 cases per property (12 min 40 s); 14/14 deliberate bugs caught; final clean rebuild green. |
+
+## 6. Open: intermittent uncertainty difference on FAT32
+
+In 2 of 13 FAT32 validations (0 of 13 exFAT, 0 of 16 NTFS, 0 of 4 ReFS), the low-impact and fast scans with all link
+counts disagreed **only in uncertainty**: one scan marked some files `ChangedDuringScan` (their timestamps were at or
+after the scan start) and the other did not. Sizes, counts, link classification and coverage were identical.
+
+The scanner behaved as specified: a file whose timestamps are newer than the scan start is reported as changed and
+its bytes are uncertain. Something updated the timestamps of fixture files on FAT32 between scans; candidates are the
+runner's real-time antivirus or FAT's timestamp/last-access handling. **The cause is not proven.** Until it is, scan-mode
+equivalence on FAT32 is established for sizes, counts and coverage but not for the uncertainty classification. A
+diagnostic that records the timestamps the scanner compared is the next step.
