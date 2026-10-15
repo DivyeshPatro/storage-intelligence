@@ -2,6 +2,9 @@ name: equivalence-repeat
 
 # Repeats scanner validation (no allocation harness) to measure how often scan-mode equivalence fails intermittently.
 on:
+  push:
+    branches: [m0b]
+    paths: [".github/workflows/equivalence-repeat.yml"]
   workflow_dispatch:
 
 permissions:
