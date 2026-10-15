@@ -1,0 +1,44 @@
+name: m0c-benchmarks
+
+# Preliminary M0c measurements on GitHub-hosted Windows runners (CI VMs). Results do not describe physical hardware.
+on:
+  push:
+    branches: [m0c]
+    paths:
+      - ".github/workflows/m0c-benchmarks.yml"
+      - "tools/ci/Invoke-Benchmarks.ps1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - { os: windows-2025, files: 100000 }
+          - { os: windows-2025, files: 1000000 }
+          - { os: windows-2025, files: 3000000 }
+          - { os: windows-2022, files: 1000000 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      SI_ALLOW_TEST_VOLUMES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Benchmarks (${{ matrix.files }} files)
+        shell: pwsh
+        run: ./tools/ci/Invoke-Benchmarks.ps1 -Files ${{ matrix.files }} -OutDir "$env:RUNNER_TEMP/bench" -CancelTrials ${{ matrix.files == 3000000 && 5 || 8 }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-${{ matrix.os }}-${{ matrix.files }}
+          path: ${{ runner.temp }}/bench
