@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>StorageIntelligence.Scanning.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StorageIntelligence.Accounting\StorageIntelligence.Accounting.csproj" />
+    <InternalsVisibleTo Include="StorageIntelligence.Scanning.Windows.Tests" />
+    <InternalsVisibleTo Include="StorageIntelligence.Validation" />
+  </ItemGroup>
+
+</Project>

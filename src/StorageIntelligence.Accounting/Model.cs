@@ -39,7 +39,8 @@ public readonly record struct CoverageCounts(
     long NotFollowedLinks,
     long ChangedDirectories,
     long IncompleteDirectories,
-    long CancelledDirectories)
+    long CancelledDirectories,
+    long SkippedReparseDirectories = 0)
 {
     public static CoverageCounts operator +(CoverageCounts a, CoverageCounts b) => new(
         a.InaccessibleDirectories + b.InaccessibleDirectories,
@@ -47,13 +48,18 @@ public readonly record struct CoverageCounts(
         a.NotFollowedLinks + b.NotFollowedLinks,
         a.ChangedDirectories + b.ChangedDirectories,
         a.IncompleteDirectories + b.IncompleteDirectories,
-        a.CancelledDirectories + b.CancelledDirectories);
+        a.CancelledDirectories + b.CancelledDirectories,
+        a.SkippedReparseDirectories + b.SkippedReparseDirectories);
 
     public static CoverageCounts Add(CoverageCounts left, CoverageCounts right) => left + right;
 
-    /// <summary>True when nothing in the subtree was skipped, denied, changed or left incomplete.</summary>
+    /// <summary>
+    /// True when nothing in the subtree was denied, errored, left incomplete, cancelled, or skipped because it is
+    /// a data-bearing reparse directory (e.g. a cloud-files folder). Not following a link is policy, not a gap.
+    /// </summary>
     public bool IsComplete =>
-        InaccessibleDirectories == 0 && EntryErrors == 0 && IncompleteDirectories == 0 && CancelledDirectories == 0;
+        InaccessibleDirectories == 0 && EntryErrors == 0 && IncompleteDirectories == 0 && CancelledDirectories == 0 &&
+        SkippedReparseDirectories == 0;
 }
 
 /// <summary>

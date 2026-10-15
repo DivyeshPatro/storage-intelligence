@@ -1,8 +1,13 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/StorageIntelligence.Accounting/StorageIntelligence.Accounting.csproj" />
+    <Project Path="src/StorageIntelligence.Scanning.Windows/StorageIntelligence.Scanning.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/StorageIntelligence.Accounting.Tests/StorageIntelligence.Accounting.Tests.csproj" />
+    <Project Path="tests/StorageIntelligence.Scanning.Windows.Tests/StorageIntelligence.Scanning.Windows.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/StorageIntelligence.Validation/StorageIntelligence.Validation.csproj" />
   </Folder>
 </Solution>

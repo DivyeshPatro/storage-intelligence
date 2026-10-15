@@ -57,6 +57,8 @@ function New-TestVolume {
         Initialize-Disk -Number $disk.Number -PartitionStyle GPT -ErrorAction Stop | Out-Null
         $partition = New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter -ErrorAction Stop
         $volume = Format-Volume -Partition $partition -FileSystem $FileSystem -NewFileSystemLabel ("SI" + $FileSystem) -Confirm:$false -Force -ErrorAction Stop
+        # Marker checked by the validation tool's TestRootGuard before it writes anything to this volume.
+        Set-Content -Path "$($partition.DriveLetter):\.si-disposable-volume" -Value "Disposable CI test volume backed by $vhd" -Encoding ascii
         return [pscustomobject]@{
             Vhd         = $vhd
             Root        = "$($partition.DriveLetter):\"

@@ -454,4 +454,17 @@ public sealed class AccountingScenarioTests
         Assert.Equal(4 * S, a.Root.Size.Allocated);
         Assert.Equal(3 * S, a.Root.Size.UncertainAllocated); // canonical 2 MB (inconsistent) + 1 MB (changed)
     }
+
+    [Fact]
+    public void Skipped_data_bearing_reparse_directories_are_a_coverage_gap()
+    {
+        var h = new Harness();
+        DirectoryId root = h.Aggregator.BeginRoot("C:");
+        h.Aggregator.AddSkippedReparseDirectory(root, "OneDrive");
+        h.Aggregator.EndListing(root);
+        ScanAccounting a = h.Finish();
+
+        Assert.Equal(1, a.Root.Coverage.SkippedReparseDirectories);
+        Assert.False(a.Root.Coverage.IsComplete);
+    }
 }

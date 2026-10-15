@@ -1,0 +1,63 @@
+name: m0b-validation
+
+# Complete test suite from a clean build, then scanner validation on disposable test volumes.
+on:
+  push:
+    branches: [m0b]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-2022]
+    runs-on: ${{ matrix.os }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      SI_PBT_ITER: "20000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Clean build and complete test suite
+        shell: pwsh
+        run: ./tools/ci/Invoke-Tests.ps1 -OutDir "$env:RUNNER_TEMP/tests"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tests-${{ matrix.os }}
+          path: ${{ runner.temp }}/tests
+
+  volume-validation:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-2022]
+        fs: [NTFS, ReFS, FAT32, exFAT]
+    runs-on: ${{ matrix.os }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      SI_ALLOW_TEST_VOLUMES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build validation tool
+        shell: pwsh
+        run: dotnet build tools/StorageIntelligence.Validation -c Release -o "$env:RUNNER_TEMP/tool"
+      - name: Validate on a disposable ${{ matrix.fs }} volume
+        shell: pwsh
+        run: ./tools/ci/Invoke-VolumeValidation.ps1 -FileSystem ${{ matrix.fs }} -OutDir "$env:RUNNER_TEMP/validation" -Tool "$env:RUNNER_TEMP/tool/si-validate.exe"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-${{ matrix.os }}-${{ matrix.fs }}
+          path: ${{ runner.temp }}/validation

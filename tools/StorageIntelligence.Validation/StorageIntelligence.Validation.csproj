@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>StorageIntelligence.Validation</RootNamespace>
+    <AssemblyName>si-validate</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\StorageIntelligence.Scanning.Windows\StorageIntelligence.Scanning.Windows.csproj" />
+    <InternalsVisibleTo Include="StorageIntelligence.Scanning.Windows.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -130,6 +130,16 @@ public sealed class ScanAggregator
         GetListing(directory).Coverage.NotFollowedLinks++;
     }
 
+    /// <summary>
+    /// Records a directory that is a reparse point but not a name surrogate (e.g. a cloud-files folder). It is not
+    /// traversed, because listing it could trigger provider activity, so its contents are a coverage gap.
+    /// </summary>
+    public void AddSkippedReparseDirectory(DirectoryId directory, string name)
+    {
+        _ = name;
+        GetListing(directory).Coverage.SkippedReparseDirectories++;
+    }
+
     /// <summary>Records an entry that could not be read (e.g. access denied on one file).</summary>
     public void RecordEntryError(DirectoryId directory) => GetListing(directory).Coverage.EntryErrors++;
 
@@ -350,8 +360,10 @@ public sealed class ScanAggregator
         public long ChangedDirectories;
         public long IncompleteDirectories;
         public long CancelledDirectories;
+        public long SkippedReparseDirectories;
 
         public readonly CoverageCounts ToCounts() => new(
-            InaccessibleDirectories, EntryErrors, NotFollowedLinks, ChangedDirectories, IncompleteDirectories, CancelledDirectories);
+            InaccessibleDirectories, EntryErrors, NotFollowedLinks, ChangedDirectories, IncompleteDirectories,
+            CancelledDirectories, SkippedReparseDirectories);
     }
 }

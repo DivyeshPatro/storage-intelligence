@@ -53,6 +53,12 @@ public sealed record DirectoryTotals(
     /// <summary>True when totals are exact up to the stated uncertain bytes: complete coverage and links reconciled.</summary>
     public bool IsComplete => Coverage.IsComplete && HardLinks != HardLinkStatus.NotReconciled;
 
+    /// <summary>
+    /// False when any directory in the subtree changed while it was being listed: its entries may be a mix of
+    /// before and after states, so the totals describe no single moment and must be shown as approximate.
+    /// </summary>
+    public bool IsStable => Coverage.ChangedDirectories == 0;
+
     public static DirectoryTotals From(DirectoryRecord record, DirectoryAdjustment adjustment, HardLinkStatus status)
     {
         ArgumentNullException.ThrowIfNull(record);
