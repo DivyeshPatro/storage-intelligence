@@ -51,6 +51,14 @@ public static unsafe class ReferenceScanner
         public long EntryErrors;
     }
 
+    /// <summary>Cumulative time per measurement call, for diagnosing slow or blocking calls.</summary>
+    private static readonly System.Diagnostics.Stopwatch EnumerateTime = new(), OpenTime = new(), InfoTime = new(), CompressedTime = new(), WofTime = new();
+
+    private static void Report(string phase, int files, int directories) =>
+        Console.Error.WriteLine(
+            $"[{DateTime.UtcNow:HH:mm:ss.fff}] reference {phase}: {files} files, {directories} dirs; ms enumerate={EnumerateTime.ElapsedMilliseconds} " +
+            $"open={OpenTime.ElapsedMilliseconds} info={InfoTime.ElapsedMilliseconds} compressed={CompressedTime.ElapsedMilliseconds} wof={WofTime.ElapsedMilliseconds}");
+
     public static ReferenceResult Scan(string root, string fileSystem)
     {
         bool hardLinks = fileSystem.ToUpperInvariant() is "NTFS" or "REFS";
@@ -64,12 +72,15 @@ public static unsafe class ReferenceScanner
         while (stack.Count > 0)
         {
             string rel = stack.Pop();
+            Report($"directory '{rel}'", files.Count, dirs.Count);
             string dirPath = rel.Length == 0 ? rootFull : rootFull + "\\" + rel;
             DirFacts facts = dirs[rel];
             ValidationNative.WIN32_FIND_DATAW data;
+            EnumerateTime.Start();
             nint find = ValidationNative.FindFirstFileEx(
                 ValidationNative.Extended(dirPath) + "\\*", ValidationNative.FindExInfoBasic, &data,
                 ValidationNative.FindExSearchNameMatch, 0, ValidationNative.FIND_FIRST_EX_LARGE_FETCH);
+            EnumerateTime.Stop();
             if (find == -1)
             {
                 int error = Marshal.GetLastPInvokeError();
@@ -131,8 +142,12 @@ public static unsafe class ReferenceScanner
                     }
 
                     files.Add(file);
+                    if (files.Count % 250 == 0)
+                    {
+                        Report("progress", files.Count, dirs.Count);
+                    }
                 }
-                while (ValidationNative.FindNextFile(find, &data));
+                while (Next(find, &data));
             }
             finally
             {
@@ -140,16 +155,33 @@ public static unsafe class ReferenceScanner
             }
         }
 
+        Report("enumeration done; computing totals", files.Count, dirs.Count);
         var directories = dirs.Keys.OrderBy(k => k, StringComparer.Ordinal)
             .Select(d => Totals(d, files, dirs))
             .ToList();
+        Report("totals done", files.Count, dirs.Count);
         return new ReferenceResult(rootFull, fileSystem, files, directories, issues);
+    }
+
+    private static bool Next(nint find, ValidationNative.WIN32_FIND_DATAW* data)
+    {
+        EnumerateTime.Start();
+        try
+        {
+            return ValidationNative.FindNextFile(find, data);
+        }
+        finally
+        {
+            EnumerateTime.Stop();
+        }
     }
 
     private static ReferenceFile? Measure(string fullPath, string rel, string dirRel, bool hardLinks)
     {
         string extended = ValidationNative.Extended(fullPath);
+        OpenTime.Start();
         using var handle = ValidationNative.OpenAttributes(extended);
+        OpenTime.Stop();
         if (handle.IsInvalid)
         {
             return null;
@@ -158,23 +190,31 @@ public static unsafe class ReferenceScanner
         ValidationNative.FILE_STANDARD_INFO standard;
         ValidationNative.FILE_ID_INFO id;
         ValidationNative.FILE_ATTRIBUTE_TAG_INFO tag;
+        InfoTime.Start();
         if (!ValidationNative.GetFileInformationByHandleEx(handle, ValidationNative.FileStandardInfo, &standard, (uint)sizeof(ValidationNative.FILE_STANDARD_INFO)) ||
             !ValidationNative.GetFileInformationByHandleEx(handle, ValidationNative.FileAttributeTagInfo, &tag, (uint)sizeof(ValidationNative.FILE_ATTRIBUTE_TAG_INFO)))
         {
+            InfoTime.Stop();
             return null;
         }
 
+        InfoTime.Stop();
         string key = hardLinks && ValidationNative.GetFileInformationByHandleEx(handle, ValidationNative.FileIdInfo, &id, (uint)sizeof(ValidationNative.FILE_ID_INFO))
             ? $"{id.VolumeSerialNumber:x}:{id.FileIdHigh:x16}{id.FileIdLow:x16}"
             : "entry:" + rel;
         // Extended path: a plain path would let Win32 map device names such as 'CON' to the console device.
+        WofTime.Start();
         (bool wof, _) = ValidationNative.WofState(extended);
+        WofTime.Stop();
+        CompressedTime.Start();
+        long compressed = ValidationNative.CompressedSize(extended);
+        CompressedTime.Stop();
         return new ReferenceFile(
             rel,
             dirRel,
             standard.EndOfFile,
             standard.AllocationSize,
-            ValidationNative.CompressedSize(extended),
+            compressed,
             hardLinks ? standard.NumberOfLinks : 1,
             key,
             tag.FileAttributes,
