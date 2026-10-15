@@ -16,6 +16,8 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 A=src/StorageIntelligence.Accounting
+# Whatever happens (including an aborted run), never leave a mutation in the source tree.
+trap 'git checkout -q -- "$A"' EXIT
 mutations=(
   "$A/HardLinkReconciler.cs @@ s/1 - a.Count,/0,/ @@ distinct-file delta dropped"
   "$A/HardLinkReconciler.cs @@ s/bool shared = a.Count < totalLinks;/bool shared = a.Count <= totalLinks;/ @@ shared uses <="
