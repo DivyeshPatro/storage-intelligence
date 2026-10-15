@@ -39,7 +39,7 @@ public sealed class ScannerIntegrationTests : IDisposable
         if (_manifest is not null)
         {
             FixtureGenerator.ReleaseDenials(_manifest);
-            Directory.Delete(@"\\?\" + _root, recursive: true);
+            FixtureGenerator.DeleteTestRoot(_root);
         }
     }
 

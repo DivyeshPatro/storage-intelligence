@@ -126,6 +126,18 @@ internal static unsafe partial class ValidationNative
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetVolumeInformation(string root, char* label, uint labelSize, out uint serial, out uint maxComponent, out uint flags, char* fsName, uint fsNameSize);
 
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool FlushFileBuffers(SafeFileHandle file);
+
+    /// <summary>Flushes a whole volume's cache (administrator only). Used only on disposable CI volumes.</summary>
+    internal static bool FlushVolume(string driveRoot)
+    {
+        string device = @"\\.\" + driveRoot.TrimEnd('\\', '.');
+        using SafeFileHandle volume = CreateFile(device, 0x80000000 | 0x40000000, 0x1 | 0x2, 0, OPEN_EXISTING, 0, 0);
+        return !volume.IsInvalid && FlushFileBuffers(volume);
+    }
+
     [LibraryImport("wofutil.dll", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial int WofIsExternalFile(string filePath, out int isExternalFile, out uint provider, nint externalFileInfo, ref uint bufferLength);
 

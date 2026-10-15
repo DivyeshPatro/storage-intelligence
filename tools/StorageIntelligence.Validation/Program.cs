@@ -176,21 +176,21 @@ int Allocation()
     Write(Arg("out"), report);
     Console.WriteLine($"## Allocation semantics: {report.FileSystem} (cluster {report.ClusterSize}, tolerance {report.ToleranceBytes} bytes)");
     Console.WriteLine();
-    Console.WriteLine("| Case | Trial | Logical | Free-space change | Listing alloc | Handle alloc | Compressed size | WOF | Listing attrs | Listing OK |");
-    Console.WriteLine("|---|---|---|---|---|---|---|---|---|---|");
+    Console.WriteLine("| Case | Trial | Logical | Free-space change (immediate) | Free-space change (settled) | Listing alloc | Handle alloc | Compressed size | WOF | Listing attrs | Listing / Handle / Compressed OK |");
+    Console.WriteLine("|---|---|---|---|---|---|---|---|---|---|---|");
     foreach (AllocationCaseResult c in report.Cases)
     {
         if (c.Trials.Count == 0)
         {
-            Console.WriteLine($"| {c.Case} | - | - | - | - | - | - | - | - | {c.Verdict}: {c.Detail} |");
+            Console.WriteLine($"| {c.Case} | - | - | - | - | - | - | - | - | - | {c.Verdict}: {c.Detail} |");
         }
 
         foreach (AllocationTrial t in c.Trials)
         {
-            Console.WriteLine($"| {t.Case} | {t.Trial} | {t.Logical} | {t.FreeSpaceDelta} | {t.ListingAllocated} | {t.HandleAllocated} | {t.CompressedSize} | {t.WofExternal} | {t.ListingAttributes} | {t.ListingMatchesFreeSpace} |");
+            Console.WriteLine($"| {t.Case} | {t.Trial} | {t.Logical} | {t.FreeSpaceDelta} | {t.FreeSpaceDeltaAfterFlush} | {t.ListingAllocated} | {t.HandleAllocated} | {t.CompressedSize} | {t.WofExternal} | {t.ListingAttributes} | {t.ListingMatchesFreeSpace} / {t.HandleMatchesFreeSpace} / {t.CompressedSizeMatchesFreeSpace} |");
         }
 
-        Console.WriteLine($"| **{c.Case}** | | | | | | | | | **{c.Verdict}** |");
+        Console.WriteLine($"| **{c.Case}** | | | | | | | | | | **{c.Verdict}** ({string.Join(", ", c.ConsistentSources ?? [])}) |");
     }
 
     return 0;
@@ -251,6 +251,7 @@ object Report(ScanResult r) => new
     r.Accounting.Aggregation.PeakOpenDirectories,
     r.Accounting.Aggregation.LinkRecordsWritten,
     r.LinkCountFailures,
+    r.AllocationCorrections,
     r.IssueCount,
     r.Issues,
     Directories = r.DirectoryPaths.OrderBy(kv => kv.Value, StringComparer.Ordinal).Select(kv =>

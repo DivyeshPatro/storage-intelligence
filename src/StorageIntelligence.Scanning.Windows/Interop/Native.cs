@@ -50,6 +50,11 @@ internal static unsafe partial class Native
     internal const uint IO_REPARSE_TAG_CLOUD_MASK = 0xFFFF0FFF;
     internal const uint IO_REPARSE_TAG_CLOUD = 0x9000001A;
 
+    internal const uint FSCTL_GET_EXTERNAL_BACKING = 0x00090310;
+    internal const int ERROR_OBJECT_NOT_EXTERNALLY_BACKED = 342;
+    internal const int ERROR_INSUFFICIENT_BUFFER = 122;
+    internal const int ERROR_MORE_DATA = 234;
+
     internal const int THREAD_MODE_BACKGROUND_BEGIN = 0x00010000;
     internal const int THREAD_MODE_BACKGROUND_END = 0x00020000;
 
@@ -121,8 +126,33 @@ internal static unsafe partial class Native
     [LibraryImport("kernel32.dll", EntryPoint = "GetCompressedFileSizeW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     internal static partial uint GetCompressedFileSize(string fileName, out uint fileSizeHigh);
 
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool DeviceIoControl(
+        SafeFileHandle device, uint ioControlCode, void* inBuffer, uint inBufferSize, void* outBuffer, uint outBufferSize, out uint bytesReturned, nint overlapped);
+
     [LibraryImport("kernel32.dll")]
     internal static partial nint GetCurrentThread();
+
+    /// <summary>
+    /// True if the file is backed by an external provider such as WOF (FSCTL_GET_EXTERNAL_BACKING). This is a metadata
+    /// query on a FILE_READ_ATTRIBUTES handle; no file content is read.
+    /// </summary>
+    internal static bool? IsExternallyBacked(SafeFileHandle handle)
+    {
+        byte* buffer = stackalloc byte[64];
+        if (DeviceIoControl(handle, FSCTL_GET_EXTERNAL_BACKING, null, 0, buffer, 64, out _, 0))
+        {
+            return true;
+        }
+
+        return Marshal.GetLastPInvokeError() switch
+        {
+            ERROR_OBJECT_NOT_EXTERNALLY_BACKED => false,
+            ERROR_INSUFFICIENT_BUFFER or ERROR_MORE_DATA => true,
+            _ => null,
+        };
+    }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

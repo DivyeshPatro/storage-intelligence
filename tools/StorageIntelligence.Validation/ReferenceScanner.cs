@@ -63,6 +63,9 @@ public static unsafe class ReferenceScanner
     {
         bool hardLinks = fileSystem.ToUpperInvariant() is "NTFS" or "REFS";
         string rootFull = Path.GetFullPath(root).TrimEnd('\\');
+        // Child paths are built by concatenation onto the extended root, never normalized: normalization would strip
+        // trailing spaces and dots and map device names such as CON, so the wrong object would be opened.
+        string rootExtended = ValidationNative.Extended(rootFull);
         var files = new List<ReferenceFile>();
         var dirs = new Dictionary<string, DirFacts>(StringComparer.Ordinal) { [""] = new() };
         var issues = new List<string>();
@@ -73,12 +76,12 @@ public static unsafe class ReferenceScanner
         {
             string rel = stack.Pop();
             Report($"directory '{rel}'", files.Count, dirs.Count);
-            string dirPath = rel.Length == 0 ? rootFull : rootFull + "\\" + rel;
+            string dirPath = rel.Length == 0 ? rootExtended : rootExtended + "\\" + rel;
             DirFacts facts = dirs[rel];
             ValidationNative.WIN32_FIND_DATAW data;
             EnumerateTime.Start();
             nint find = ValidationNative.FindFirstFileEx(
-                ValidationNative.Extended(dirPath) + "\\*", ValidationNative.FindExInfoBasic, &data,
+                dirPath + "\\*", ValidationNative.FindExInfoBasic, &data,
                 ValidationNative.FindExSearchNameMatch, 0, ValidationNative.FIND_FIRST_EX_LARGE_FETCH);
             EnumerateTime.Stop();
             if (find == -1)
@@ -142,7 +145,7 @@ public static unsafe class ReferenceScanner
                         continue;
                     }
 
-                    ReferenceFile? file = Measure(rootFull + "\\" + childRel, childRel, rel, hardLinks);
+                    ReferenceFile? file = Measure(rootExtended + "\\" + childRel, childRel, rel, hardLinks, data.dwFileAttributes, reparse ? data.dwReserved0 : 0);
                     if (file is null)
                     {
                         facts.EntryErrors++;
@@ -185,9 +188,8 @@ public static unsafe class ReferenceScanner
         }
     }
 
-    private static ReferenceFile? Measure(string fullPath, string rel, string dirRel, bool hardLinks)
+    private static ReferenceFile? Measure(string extended, string rel, string dirRel, bool hardLinks, uint findAttributes, uint findTag)
     {
-        string extended = ValidationNative.Extended(fullPath);
         OpenTime.Start();
         using var handle = ValidationNative.OpenAttributes(extended);
         OpenTime.Stop();
@@ -200,8 +202,13 @@ public static unsafe class ReferenceScanner
         ValidationNative.FILE_ID_INFO id;
         ValidationNative.FILE_ATTRIBUTE_TAG_INFO tag;
         InfoTime.Start();
-        if (!ValidationNative.GetFileInformationByHandleEx(handle, ValidationNative.FileStandardInfo, &standard, (uint)sizeof(ValidationNative.FILE_STANDARD_INFO)) ||
-            !ValidationNative.GetFileInformationByHandleEx(handle, ValidationNative.FileAttributeTagInfo, &tag, (uint)sizeof(ValidationNative.FILE_ATTRIBUTE_TAG_INFO)))
+        if (!ValidationNative.GetFileInformationByHandleEx(handle, ValidationNative.FileAttributeTagInfo, &tag, (uint)sizeof(ValidationNative.FILE_ATTRIBUTE_TAG_INFO)))
+        {
+            // Not supported on FAT32/exFAT; those have no reparse points, so the enumeration's values are complete.
+            tag = new ValidationNative.FILE_ATTRIBUTE_TAG_INFO { FileAttributes = findAttributes, ReparseTag = findTag };
+        }
+
+        if (!ValidationNative.GetFileInformationByHandleEx(handle, ValidationNative.FileStandardInfo, &standard, (uint)sizeof(ValidationNative.FILE_STANDARD_INFO)))
         {
             InfoTime.Stop();
             return null;

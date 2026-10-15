@@ -66,6 +66,52 @@ public sealed class FixtureGenerator
         return generator._manifest;
     }
 
+    /// <summary>
+    /// Deletes a test root created by <see cref="TestRootGuard.CreateTempTestRoot"/>. Reparse points (junctions,
+    /// symbolic links) are removed as links and never entered, so a junction loop or a link to a real folder can never
+    /// cause anything outside the root to be deleted.
+    /// </summary>
+    public static void DeleteTestRoot(string root)
+    {
+        TestRootGuard.AssertWritable(root);
+        string extended = ValidationNative.Extended(root);
+        DeleteTree(extended);
+
+        static void DeleteTree(string directory)
+        {
+            foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+            {
+                FileAttributes attributes = System.IO.File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    if ((attributes & FileAttributes.Directory) != 0)
+                    {
+                        Directory.Delete(entry, recursive: false); // removes the link itself
+                    }
+                    else
+                    {
+                        System.IO.File.Delete(entry);
+                    }
+                }
+                else if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    DeleteTree(entry);
+                }
+                else
+                {
+                    if ((attributes & FileAttributes.ReadOnly) != 0)
+                    {
+                        System.IO.File.SetAttributes(entry, attributes & ~FileAttributes.ReadOnly);
+                    }
+
+                    System.IO.File.Delete(entry);
+                }
+            }
+
+            Directory.Delete(directory, recursive: false);
+        }
+    }
+
     /// <summary>Removes deny ACEs the generator added so the test root can be deleted.</summary>
     public static void ReleaseDenials(FixtureManifest manifest)
     {
@@ -287,6 +333,8 @@ public sealed class FixtureGenerator
         {
             if (!ValidationNative.DeviceIoControl(fs.SafeFileHandle, ValidationNative.FSCTL_SET_SPARSE, null, 0, null, 0, out _, 0))
             {
+                fs.Dispose();
+                System.IO.File.Delete(Full(rel));
                 throw new IOException($"FSCTL_SET_SPARSE failed ({System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}).");
             }
 
@@ -305,6 +353,21 @@ public sealed class FixtureGenerator
 
     private unsafe void Compressed(string rel, int size, bool compressible)
     {
+        try
+        {
+            CompressedCore(rel, size, compressible);
+        }
+        catch
+        {
+            System.IO.File.Delete(Full(rel)); // never leave an unrecorded half-made file behind
+            throw;
+        }
+
+        _manifest.Files.Add(new ManifestFile(rel, size, null, compressible ? "ntfs-compressed" : "ntfs-compressed-incompressible"));
+    }
+
+    private unsafe void CompressedCore(string rel, int size, bool compressible)
+    {
         using (var fs = new FileStream(Full(rel), FileMode.CreateNew, FileAccess.ReadWrite))
         {
             ushort format = ValidationNative.COMPRESSION_FORMAT_DEFAULT;
@@ -316,8 +379,6 @@ public sealed class FixtureGenerator
             WriteContent(fs, size, compressible);
             fs.Flush(flushToDisk: true);
         }
-
-        _manifest.Files.Add(new ManifestFile(rel, size, null, compressible ? "ntfs-compressed" : "ntfs-compressed-incompressible"));
     }
 
     private void Wof(string rel, int size)
@@ -329,8 +390,17 @@ public sealed class FixtureGenerator
             fs.Flush(flushToDisk: true);
         }
 
-        RunTool("compact.exe", "/c", "/exe:xpress4k", path);
-        (bool external, uint provider) = ValidationNative.WofState(path);
+        try
+        {
+            RunTool("compact.exe", "/c", "/exe:xpress4k", path);
+        }
+        catch
+        {
+            System.IO.File.Delete(path);
+            throw;
+        }
+
+        (bool external, uint provider) = ValidationNative.WofState(ValidationNative.Extended(path));
         if (!external)
         {
             System.IO.File.Delete(path);

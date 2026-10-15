@@ -6,20 +6,26 @@ using StorageIntelligence.Validation.Interop;
 namespace StorageIntelligence.Validation;
 
 /// <summary>One measured file creation.</summary>
+/// <summary>One measured file creation. Matches are judged against the settled (post-flush) free-space change.</summary>
 public sealed record AllocationTrial(
     string Case,
     int Trial,
     long Logical,
     long FreeSpaceDelta,
+    long FreeSpaceDeltaAfterFlush,
     long ListingAllocated,
     long HandleAllocated,
     long CompressedSize,
     bool WofExternal,
     string ListingAttributes,
     bool ListingMatchesFreeSpace,
+    bool HandleMatchesFreeSpace,
     bool CompressedSizeMatchesFreeSpace);
 
-public sealed record AllocationCaseResult(string Case, string Verdict, string Detail, List<AllocationTrial> Trials);
+/// <param name="Verdict">"consistent" when the directory listing matched the settled free-space change in every trial,
+/// "inconsistent" otherwise, or "not-supported".</param>
+/// <param name="ConsistentSources">Which measurement sources matched in every trial (listing, handle, compressed-size).</param>
+public sealed record AllocationCaseResult(string Case, string Verdict, string Detail, List<AllocationTrial> Trials, List<string>? ConsistentSources = null);
 
 public sealed record AllocationReport(string Root, string FileSystem, long ClusterSize, long ToleranceBytes, List<AllocationCaseResult> Cases);
 
@@ -61,13 +67,15 @@ public static class AllocationHarness
                 new("ntfs-compressed", p => Compressed(p, 8 << 20, noise, true), NtfsOnly: true),
                 new("ntfs-compressed", p => Compressed(p, 4 << 20, noise, false), NtfsOnly: true),
                 new("ntfs-compressed", p => Compressed(p, 1 << 20, noise, true), NtfsOnly: true)]),
+            // Incompressible data is not tested for WOF: compact.exe declines to WOF-compress it.
             ("wof", [
                 new("wof", p => Wof(p, 8 << 20, noise, true), NtfsOnly: true),
-                new("wof", p => Wof(p, 4 << 20, noise, false), NtfsOnly: true),
+                new("wof", p => Wof(p, 3 << 20, noise, true), NtfsOnly: true),
                 new("wof", p => Wof(p, 1 << 20, noise, true), NtfsOnly: true)]),
         };
 
         long tolerance = ToleranceClusters * clusterSize;
+        bool volumeRoot = TestRootGuard.IsVolumeRoot(root);
         var results = new List<AllocationCaseResult>();
         foreach ((string caseName, CaseSpec[] trials) in specs)
         {
@@ -87,10 +95,11 @@ public static class AllocationHarness
                 string path = Path.Combine(dir, "f.bin");
                 try
                 {
-                    long before = StableFree(dir);
+                    long before = Settled(dir, root, volumeRoot);
                     long logical = trials[i].Create(path);
-                    long after = StableFree(dir);
-                    measured.Add(Measure(caseName, i, path, dir, logical, before - after, tolerance));
+                    long immediate = before - StableFree(dir);
+                    long settled = before - Settled(dir, root, volumeRoot);
+                    measured.Add(Measure(caseName, i, path, dir, logical, immediate, settled, tolerance));
                 }
                 catch (Exception e) when (e is IOException or InvalidOperationException or UnauthorizedAccessException)
                 {
@@ -105,19 +114,32 @@ public static class AllocationHarness
                 continue;
             }
 
-            bool listingOk = measured.All(t => t.ListingMatchesFreeSpace);
-            bool compressedOk = measured.All(t => t.CompressedSizeMatchesFreeSpace);
-            string verdict = listingOk ? "consistent" : "inconsistent";
-            string detail = listingOk
-                ? "directory-listing allocation matched the free-space change in every trial"
-                : $"directory-listing allocation did not match the free-space change; GetCompressedFileSize {(compressedOk ? "did" : "did not")} match";
-            results.Add(new AllocationCaseResult(caseName, verdict, detail, measured));
+            var sources = new List<string>();
+            if (measured.All(t => t.ListingMatchesFreeSpace))
+            {
+                sources.Add("listing");
+            }
+
+            if (measured.All(t => t.HandleMatchesFreeSpace))
+            {
+                sources.Add("handle");
+            }
+
+            if (measured.All(t => t.CompressedSizeMatchesFreeSpace))
+            {
+                sources.Add("compressed-size");
+            }
+
+            bool listingOk = sources.Contains("listing");
+            string detail = (listingOk ? "listing matched" : "listing did not match") +
+                $" the settled free-space change in every trial; sources matching in every trial: {(sources.Count == 0 ? "none" : string.Join(", ", sources))}";
+            results.Add(new AllocationCaseResult(caseName, listingOk ? "consistent" : "inconsistent", detail, measured, sources));
         }
 
         return new AllocationReport(root, fileSystem, clusterSize, tolerance, results);
     }
 
-    private static AllocationTrial Measure(string caseName, int trial, string path, string dir, long logical, long delta, long tolerance)
+    private static AllocationTrial Measure(string caseName, int trial, string path, string dir, long logical, long immediate, long delta, long tolerance)
     {
         RawEntry entry = default;
         using (DirectoryReader reader = DirectoryReader.Open(ValidationNative.Extended(dir), ListingFormat.IdExtended, out int error)
@@ -145,11 +167,12 @@ public static class AllocationHarness
         }
 
         long compressed = ValidationNative.CompressedSize(ValidationNative.Extended(path));
-        (bool wof, _) = ValidationNative.WofState(path);
+        (bool wof, _) = ValidationNative.WofState(ValidationNative.Extended(path));
         return new AllocationTrial(
             caseName,
             trial,
             logical,
+            immediate,
             delta,
             entry.AllocationSize,
             handleAllocated,
@@ -157,7 +180,35 @@ public static class AllocationHarness
             wof,
             $"0x{entry.Attributes:X} tag 0x{entry.ReparseTag:X8}",
             Math.Abs(entry.AllocationSize - delta) <= tolerance,
+            handleAllocated >= 0 && Math.Abs(handleAllocated - delta) <= tolerance,
             compressed >= 0 && Math.Abs(compressed - delta) <= tolerance);
+    }
+
+    /// <summary>
+    /// Free space after the filesystem has settled: on a disposable volume the volume cache is flushed first, then the
+    /// reading must stay unchanged for 3 seconds (ReFS and NTFS compression account lazily).
+    /// </summary>
+    private static long Settled(string dir, string root, bool volumeRoot)
+    {
+        if (volumeRoot)
+        {
+            ValidationNative.FlushVolume(Path.GetPathRoot(Path.GetFullPath(root))!);
+        }
+
+        long value = StableFree(dir);
+        for (int i = 0; i < 30; i++)
+        {
+            Thread.Sleep(3000);
+            long again = StableFree(dir);
+            if (again == value)
+            {
+                return value;
+            }
+
+            value = again;
+        }
+
+        return value;
     }
 
     /// <summary>Free space, read until two consecutive readings agree (some filesystems account lazily).</summary>

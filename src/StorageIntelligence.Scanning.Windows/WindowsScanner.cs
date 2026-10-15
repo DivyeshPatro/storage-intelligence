@@ -72,7 +72,8 @@ public sealed record ScanResult(
     IReadOnlyList<ScanIssue> Issues,
     long IssueCount,
     long LinkCountFailures,
-    IReadOnlyDictionary<DirectoryId, string> DirectoryPaths);
+    IReadOnlyDictionary<DirectoryId, string> DirectoryPaths,
+    long AllocationCorrections = 0);
 
 /// <summary>
 /// Read-only Windows scanner. Listing workers read directories; a single consumer (the calling thread) owns the
@@ -82,6 +83,7 @@ public sealed record ScanResult(
 public sealed class WindowsScanner
 {
     private const int BatchEntries = 4096;
+
 
     /// <summary>Pseudo Win32 error recorded when a listing worker failed unexpectedly.</summary>
     public const int UnexpectedWorkerError = -1;
@@ -125,7 +127,7 @@ public sealed class WindowsScanner
         string rootExtended = Native.ToExtendedPath(root).TrimEnd('\\');
         var paths = new Dictionary<DirectoryId, string>();
         var issues = new List<ScanIssue>();
-        long issueCount = 0, linkCountFailures = 0;
+        long issueCount = 0, linkCountFailures = 0, allocationCorrections = 0;
         ListingFormat format = policy.FileSystemSupportsHardLinks ? ListingFormat.IdExtended : ListingFormat.Full;
 
         int workers = options.Mode == ScanMode.LowImpact ? 1 : Math.Max(1, options.FastWorkers);
@@ -189,7 +191,7 @@ public sealed class WindowsScanner
         AggregationOutcome outcome = cancelled ? aggregator.Cancel() : aggregator.Complete();
         ScanAccounting accounting = ScanAccounting.Build(outcome, store, links, policy);
         return new ScanResult(
-            root, volume, options, started, clock.Elapsed, accounting, store, issues, issueCount, linkCountFailures, paths);
+            root, volume, options, started, clock.Elapsed, accounting, store, issues, issueCount, linkCountFailures, paths, allocationCorrections);
 
         void Apply(Batch batch)
         {
@@ -235,7 +237,7 @@ public sealed class WindowsScanner
                     continue;
                 }
 
-                FileObservation observation = Observe(entry, item.ExtendedPath + entry.Name, policy, options, scanStartFileTime, ref linkCountFailures);
+                FileObservation observation = Observe(entry, item.ExtendedPath + entry.Name, policy, options, scanStartFileTime, ref linkCountFailures, ref allocationCorrections);
                 aggregator.AddFile(item.Id, observation);
                 options.FileObserver?.Invoke(childRelative, observation, policy.Effective(observation.Flags, observation.FileId.HasValue));
             }
@@ -390,7 +392,8 @@ public sealed class WindowsScanner
         MeasurementPolicy policy,
         ScanOptions options,
         long scanStartFileTime,
-        ref long linkCountFailures)
+        ref long linkCountFailures,
+        ref long allocationCorrections)
     {
         MeasurementCaveats caveats = MeasurementCaveats.None;
         if ((entry.Attributes & Native.FILE_ATTRIBUTE_SPARSE_FILE) != 0)
@@ -423,17 +426,40 @@ public sealed class WindowsScanner
             caveats |= MeasurementCaveats.ChangedDuringScan;
         }
 
+        long allocated = entry.AllocationSize;
+        bool anomalous = !entry.IsReparsePoint &&
+            (entry.Attributes & (Native.FILE_ATTRIBUTE_SPARSE_FILE | Native.FILE_ATTRIBUTE_COMPRESSED)) == 0 &&
+            entry.AllocationSize < entry.EndOfFile;
+        if (anomalous)
+        {
+            // A plain file always has allocation >= size. Less means the listing does not show the real storage:
+            // WOF-compressed files are listed with allocation 0 and no reparse attribute (M0b evidence). Ask the file.
+            allocationCorrections++;
+            using var handle = Native.OpenMetadata(extendedPath, Native.FILE_READ_ATTRIBUTES, out _);
+            if (!handle.IsInvalid && Native.TryGetStandardInfo(handle, out Native.FILE_STANDARD_INFO info))
+            {
+                allocated = info.AllocationSize;
+                caveats |= Native.IsExternallyBacked(handle) == true
+                    ? MeasurementCaveats.WofCompressed
+                    : MeasurementCaveats.UnrecognizedAttributes;
+            }
+            else
+            {
+                caveats |= MeasurementCaveats.UnrecognizedAttributes;
+            }
+        }
+
         FileId128? id = policy.FileSystemSupportsHardLinks ? entry.FileId : null;
         uint linkCount = 0;
         bool measure = id.HasValue && (options.LinkCounts == LinkCountMeasurement.All ||
-            (options.LinkCounts == LinkCountMeasurement.RetainedFiles && entry.AllocationSize >= options.RetainFileThreshold));
+            (options.LinkCounts == LinkCountMeasurement.RetainedFiles && allocated >= options.RetainFileThreshold));
         if (measure)
         {
             using var handle = Native.OpenMetadata(extendedPath, Native.FILE_READ_ATTRIBUTES, out _);
             if (!handle.IsInvalid && Native.TryGetStandardInfo(handle, out Native.FILE_STANDARD_INFO info))
             {
                 linkCount = info.NumberOfLinks;
-                if (info.AllocationSize != entry.AllocationSize || info.EndOfFile != entry.EndOfFile)
+                if (info.AllocationSize != allocated || info.EndOfFile != entry.EndOfFile)
                 {
                     caveats |= MeasurementCaveats.ChangedDuringScan;
                 }
@@ -444,7 +470,7 @@ public sealed class WindowsScanner
             }
         }
 
-        return new FileObservation(entry.Name, id, entry.EndOfFile, entry.AllocationSize, caveats, linkCount);
+        return new FileObservation(entry.Name, id, entry.EndOfFile, allocated, caveats, linkCount);
     }
 
     private static LinkKind LinkKindOf(uint tag) => tag switch
