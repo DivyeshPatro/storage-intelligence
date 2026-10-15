@@ -1,0 +1,32 @@
+name: volume-probe
+
+# M0b feasibility probe: records which disposable test volumes and fixture features this runner supports.
+on:
+  push:
+    paths:
+      - "tools/ci/**"
+      - ".github/workflows/volume-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-2022]
+    runs-on: ${{ matrix.os }}
+    env:
+      SI_ALLOW_TEST_VOLUMES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe test volume capabilities
+        shell: pwsh
+        run: ./tools/ci/Probe-VolumeCapabilities.ps1 -OutDir "$env:RUNNER_TEMP/probe"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: volume-capabilities-${{ matrix.os }}
+          path: ${{ runner.temp }}/probe
