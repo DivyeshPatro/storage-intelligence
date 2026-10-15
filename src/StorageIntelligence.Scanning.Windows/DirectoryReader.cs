@@ -60,7 +60,8 @@ public sealed unsafe class DirectoryReader : IDisposable
     /// <summary>Opens a directory for listing. Returns null and the Win32 error if it cannot be opened.</summary>
     public static DirectoryReader? Open(string extendedPath, ListingFormat preferred, out int error)
     {
-        SafeFileHandle handle = Native.OpenMetadata(extendedPath, Native.FILE_LIST_DIRECTORY, out error);
+        // FILE_READ_ATTRIBUTES is needed for the directory's own timestamps (change detection); still metadata-only.
+        SafeFileHandle handle = Native.OpenMetadata(extendedPath, Native.FILE_LIST_DIRECTORY | Native.FILE_READ_ATTRIBUTES, out error);
         if (handle.IsInvalid)
         {
             handle.Dispose();

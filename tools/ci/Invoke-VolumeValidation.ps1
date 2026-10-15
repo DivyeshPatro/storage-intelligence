@@ -14,7 +14,7 @@ $title = "validation $FileSystem $env:ImageOS"
 
 # Runs the tool with a watchdog. On timeout the process is killed and the tail of its output is published,
 # so a hang is diagnosable instead of silently consuming the job.
-function Invoke-Tool([string] $Name, [string[]] $Arguments, [int] $TimeoutSeconds = 600) {
+function Invoke-Tool([string] $Name, [string[]] $Arguments, [int] $TimeoutSeconds = 300) {
     $out = Join-Path $OutDir "$Name.log"
     $err = Join-Path $OutDir "$Name.progress.log"
     $p = Start-Process -FilePath $Tool -ArgumentList $Arguments -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err

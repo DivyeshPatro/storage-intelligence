@@ -11,7 +11,8 @@ function Write-CiAnnotation {
         if ($null -eq $line -or ($size + $line.Length) -gt 3500) {
             if ($chunk.Count -gt 0) {
                 $msg = ($chunk -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-                Write-Output "::notice title=$Title [$part]::$msg"
+                # Straight to the console: Write-Output inside a function would become its return value.
+                [Console]::Out.WriteLine("::notice title=$Title [$part]::$msg")
                 $part++
             }
             $chunk.Clear(); $size = 0
@@ -25,7 +26,7 @@ function Write-CiAnnotation {
 function Write-CiError([Parameter(Mandatory)] $ErrorRecord) {
     $text = ($ErrorRecord | Out-String) + "`n" + $ErrorRecord.ScriptStackTrace
     $msg = $text.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-    Write-Output "::error title=script failure::$msg"
+    [Console]::Out.WriteLine("::error title=script failure::$msg")
 }
 
 Export-ModuleMember -Function Write-CiAnnotation, Write-CiError
