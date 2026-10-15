@@ -41,6 +41,7 @@ public static class Comparison
         var mismatches = new List<Mismatch>();
         var gaps = new List<Mismatch>();
         bool allLinksMeasured = production.Options.LinkCounts == LinkCountMeasurement.All;
+        bool hardLinkFileSystem = production.Accounting.HardLinks != HardLinkStatus.NotApplicable;
 
         var prodDirs = production.DirectoryPaths.ToDictionary(
             kv => kv.Value,
@@ -102,13 +103,13 @@ public static class Comparison
             CheckCaveat("Sparse", (r.Attributes & 0x200) != 0, p);
             CheckCaveat("Compressed", (r.Attributes & 0x800) != 0, p);
             bool wofByTag = r.ReparseTag == 0x80000017;
-            if (r.WofExternal && !p.Caveats.Contains("WofCompressed", StringComparison.Ordinal))
+            if (r.WofExternal && !HasCaveat(p, MeasurementCaveats.WofCompressed))
             {
                 mismatches.Add(new Mismatch("caveat.WofCompressed", p.Path,
                     $"WOF API reports a WOF-backed file (tag visible to handle query: {wofByTag}) but the directory listing did not flag it"));
             }
 
-            if (allLinksMeasured)
+            if (allLinksMeasured && hardLinkFileSystem)
             {
                 Check("file.link-count", p.Path, r.Links, p.LinkCount);
             }
@@ -150,13 +151,17 @@ public static class Comparison
 
         void CheckCaveat(string caveat, bool expected, ProductionFile p)
         {
-            bool actual = p.Caveats.Contains(caveat, StringComparison.Ordinal);
+            bool actual = HasCaveat(p, Enum.Parse<MeasurementCaveats>(caveat));
             if (expected != actual)
             {
                 mismatches.Add(new Mismatch("caveat." + caveat, p.Path, $"handle attributes say {expected}, listing caveat {actual}"));
             }
         }
     }
+
+    /// <summary>Exact flag test; substring matching would confuse WofCompressed with Compressed.</summary>
+    private static bool HasCaveat(ProductionFile p, MeasurementCaveats caveat) =>
+        Enum.Parse<MeasurementCaveats>(p.Caveats).HasFlag(caveat);
 
     /// <summary>Validates the reference itself against what the generator created.</summary>
     private static void CheckManifest(FixtureManifest manifest, ReferenceResult reference, List<Mismatch> mismatches, List<Mismatch> gaps)
