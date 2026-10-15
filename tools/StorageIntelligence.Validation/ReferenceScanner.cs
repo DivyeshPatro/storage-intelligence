@@ -103,6 +103,11 @@ public static unsafe class ReferenceScanner
                         continue;
                     }
 
+                    if (name.Length == 0)
+                    {
+                        throw new InvalidDataException($"Empty file name while listing '{rel}' (WIN32_FIND_DATAW layout?).");
+                    }
+
                     string childRel = rel.Length == 0 ? name : rel + "\\" + name;
                     bool reparse = (data.dwFileAttributes & ValidationNative.FILE_ATTRIBUTE_REPARSE_POINT) != 0;
                     bool surrogate = reparse && (data.dwReserved0 & 0x20000000) != 0;
@@ -122,7 +127,11 @@ public static unsafe class ReferenceScanner
                             continue;
                         }
 
-                        dirs[childRel] = new DirFacts();
+                        if (!dirs.TryAdd(childRel, new DirFacts()))
+                        {
+                            throw new InvalidDataException($"Directory '{childRel}' reached twice; refusing to loop.");
+                        }
+
                         stack.Push(childRel);
                         continue;
                     }

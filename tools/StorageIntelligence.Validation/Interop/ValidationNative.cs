@@ -38,13 +38,24 @@ internal static unsafe partial class ValidationNative
     internal const int FindExSearchNameMatch = 0;
     internal const int FIND_FIRST_EX_LARGE_FETCH = 2;
 
+    /// <summary>
+    /// FILETIME is two DWORDs (4-byte aligned). Declaring it as <c>long</c> would add 4 bytes of padding after
+    /// dwFileAttributes and shift every later field, including the file name.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FILETIME
+    {
+        public uint Low;
+        public uint High;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     internal struct WIN32_FIND_DATAW
     {
         public uint dwFileAttributes;
-        public long ftCreationTime;
-        public long ftLastAccessTime;
-        public long ftLastWriteTime;
+        public FILETIME ftCreationTime;
+        public FILETIME ftLastAccessTime;
+        public FILETIME ftLastWriteTime;
         public uint nFileSizeHigh;
         public uint nFileSizeLow;
         public uint dwReserved0;
