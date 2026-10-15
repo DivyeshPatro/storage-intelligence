@@ -133,7 +133,23 @@ public sealed record MeasurementPolicy
         return flags;
     }
 
-    public bool IsUncertain(MeasurementCaveats effectiveFlags) => (effectiveFlags & UncertainReasons) != 0;
+    /// <summary>
+    /// Caveats that make a measurement uncertain whatever the policy says: the observation itself is
+    /// inconsistent or incomplete, so no validation evidence can make it exact.
+    /// </summary>
+    public const MeasurementCaveats AlwaysUncertain =
+        MeasurementCaveats.ChangedDuringScan | MeasurementCaveats.InconsistentLinkSizes |
+        MeasurementCaveats.IdentityUnavailable | MeasurementCaveats.UnrecognizedAttributes;
+
+    public bool IsUncertain(MeasurementCaveats effectiveFlags) =>
+        (effectiveFlags & (UncertainReasons | AlwaysUncertain)) != 0;
+
+    /// <summary>
+    /// True when an entry is known to be the file's only link: either the filesystem has no hard links, or the
+    /// link count was measured as exactly 1. Unmeasured link counts are never assumed to be 1.
+    /// </summary>
+    public bool IsVerifiedSingleLink(bool hasFileId, uint measuredLinkCount) =>
+        !FileSystemSupportsHardLinks || (hasFileId && measuredLinkCount == 1);
 
     /// <summary>Converts one file's sizes into a vector. Must be the only conversion used, so deltas stay consistent.</summary>
     public SizeVector ToVector(long logical, long allocated, MeasurementCaveats effectiveFlags) =>

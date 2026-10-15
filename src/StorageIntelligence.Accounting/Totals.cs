@@ -15,14 +15,18 @@ public enum HardLinkStatus
 
 /// <summary>
 /// Final totals for one directory subtree. See docs/accounting-semantics.md.
+/// Size is split three ways by what is known about each file's hard links:
+/// <see cref="Shared"/> (known to have a link outside the subtree), <see cref="ExclusiveVerified"/> (link count
+/// measured and every link inside the subtree, or no hard links possible) and <see cref="LinkStatusUnknown"/>
+/// (every observed link is inside, but the complete link count was not measured).
 /// <list type="bullet">
 /// <item><see cref="Size"/> counts each distinct file in the subtree once. Because a file can have links in
 /// several sibling subtrees, sibling totals are not additive: a parent's total can be less than the sum of its
 /// children's totals plus its own files.</item>
 /// <item><see cref="Shared"/> is the part of <see cref="Size"/> belonging to files that also have a link outside
 /// this subtree (within the scanned volume, or outside the scan where link counts were measured).</item>
-/// <item><see cref="Exclusive"/> = Size − Shared: bytes reachable only through this subtree. Exclusive totals of
-/// disjoint sibling subtrees are additive.</item>
+/// <item><see cref="ExclusiveVerified"/>: bytes proven reachable only through this subtree. Verified-exclusive
+/// totals of disjoint sibling subtrees are additive.</item>
 /// </list>
 /// </summary>
 public sealed record DirectoryTotals(
@@ -32,14 +36,19 @@ public sealed record DirectoryTotals(
     int Depth,
     SizeVector Size,
     SizeVector Shared,
+    SizeVector ExclusiveVerified,
     long FileEntries,
     long DistinctFiles,
     long SharedFiles,
+    long ExclusiveVerifiedFiles,
     long Directories,
     CoverageCounts Coverage,
     HardLinkStatus HardLinks)
 {
-    public SizeVector Exclusive => Size - Shared;
+    /// <summary>Bytes whose files have every observed link inside the subtree but no measured link count.</summary>
+    public SizeVector LinkStatusUnknown => Size - Shared - ExclusiveVerified;
+
+    public long LinkStatusUnknownFiles => DistinctFiles - SharedFiles - ExclusiveVerifiedFiles;
 
     /// <summary>True when totals are exact up to the stated uncertain bytes: complete coverage and links reconciled.</summary>
     public bool IsComplete => Coverage.IsComplete && HardLinks != HardLinkStatus.NotReconciled;
@@ -54,9 +63,11 @@ public sealed record DirectoryTotals(
             record.Depth,
             record.Subtree + adjustment.Delta,
             adjustment.Shared,
+            record.SubtreeVerified + adjustment.VerifiedDelta,
             record.SubtreeFileEntries,
             record.SubtreeFileEntries + adjustment.DistinctFilesDelta,
             adjustment.SharedFiles,
+            record.SubtreeVerifiedFiles + adjustment.VerifiedFilesDelta,
             record.SubtreeDirectories,
             record.SubtreeCoverage,
             status);

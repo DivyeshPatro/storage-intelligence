@@ -60,6 +60,8 @@ public readonly record struct CoverageCounts(
 /// A finalized directory as emitted by the aggregator, before hard-link reconciliation.
 /// <see cref="Subtree"/> and <see cref="SubtreeFileEntries"/> count every directory entry, so a file with
 /// several links inside the subtree is counted once per link. Reconciliation corrects this.
+/// <see cref="SubtreeVerified"/> holds entries whose link status is already known to be "single link"
+/// (measured link count of 1, or a filesystem without hard links).
 /// </summary>
 public sealed record DirectoryRecord(
     DirectoryId Id,
@@ -72,7 +74,9 @@ public sealed record DirectoryRecord(
     long SubtreeFileEntries,
     long SubtreeDirectories,
     CoverageCounts OwnCoverage,
-    CoverageCounts SubtreeCoverage);
+    CoverageCounts SubtreeCoverage,
+    SizeVector SubtreeVerified = default,
+    long SubtreeVerifiedFiles = 0);
 
 /// <summary>Receives finalized directories (post-order) and retained large files.</summary>
 public interface IScanSink

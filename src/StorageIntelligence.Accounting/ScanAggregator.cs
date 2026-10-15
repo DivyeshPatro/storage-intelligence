@@ -100,6 +100,11 @@ public sealed class ScanAggregator
         d.OwnEntries++;
         d.Subtree += size;
         d.SubtreeEntries++;
+        if (_options.Policy.IsVerifiedSingleLink(file.FileId.HasValue, file.LinkCount))
+        {
+            d.SubtreeVerified += size;
+            d.SubtreeVerifiedFiles++;
+        }
 
         int ext = _extensions.IdFor(file.Name);
         _extensionTotals.TryGetValue(ext, out ExtensionStats stats);
@@ -254,7 +259,9 @@ public sealed class ScanAggregator
                 current.SubtreeEntries,
                 current.SubtreeDirectories,
                 current.Coverage.ToCounts(),
-                subtreeCoverage);
+                subtreeCoverage,
+                current.SubtreeVerified,
+                current.SubtreeVerifiedFiles);
 
             _open.Remove(current.Id.Value);
             _sink.OnDirectoryCompleted(record);
@@ -268,6 +275,8 @@ public sealed class ScanAggregator
             OpenDirectory parent = _open[parentId.Value];
             parent.Subtree += record.Subtree;
             parent.SubtreeEntries += record.SubtreeFileEntries;
+            parent.SubtreeVerified += record.SubtreeVerified;
+            parent.SubtreeVerifiedFiles += record.SubtreeVerifiedFiles;
             parent.SubtreeDirectories += record.SubtreeDirectories + 1;
             parent.ChildCoverage += subtreeCoverage;
             parent.PendingChildren--;
@@ -321,6 +330,8 @@ public sealed class ScanAggregator
         public long OwnEntries;
         public SizeVector Subtree;
         public long SubtreeEntries;
+        public SizeVector SubtreeVerified;
+        public long SubtreeVerifiedFiles;
         public long SubtreeDirectories;
         public int PendingChildren;
         public bool ListingEnded;

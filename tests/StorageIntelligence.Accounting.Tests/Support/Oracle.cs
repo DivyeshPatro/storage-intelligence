@@ -6,9 +6,11 @@ namespace StorageIntelligence.Accounting.Tests.Support;
 public sealed record ExpectedTotals(
     SizeVector Size,
     SizeVector Shared,
+    SizeVector ExclusiveVerified,
     long FileEntries,
     long DistinctFiles,
     long SharedFiles,
+    long ExclusiveVerifiedFiles,
     long Directories,
     CoverageCounts Coverage);
 
@@ -24,11 +26,13 @@ public sealed record ExpectedTotals(
 /// <item>Size(D) = sum of sizes of distinct files with at least one entry in D's subtree.</item>
 /// <item>Shared(D) = sum over those files whose total link count (max of observed entries and any measured
 /// link count) exceeds the number of entries inside D's subtree.</item>
+/// <item>ExclusiveVerified(D) = sum over the other files whose complete link count is known: measured on at
+/// least one entry, or impossible to exceed one because the filesystem has no hard links.</item>
 /// </list>
 /// </summary>
 public static class Oracle
 {
-    private sealed record FileFacts(SizeVector Size, int ExtensionOwner, long TotalLinks, IReadOnlyList<int> Entries);
+    private sealed record FileFacts(SizeVector Size, int ExtensionOwner, long TotalLinks, bool LinkCountKnown, IReadOnlyList<int> Entries);
 
     public static ExpectedTotals For(DriverResult run, int dir)
     {
@@ -39,8 +43,8 @@ public static class Oracle
 
         bool InSubtree(int d) => model.IsInSubtree(d, dir);
 
-        SizeVector size = SizeVector.Zero, shared = SizeVector.Zero;
-        long distinct = 0, sharedFiles = 0;
+        SizeVector size = SizeVector.Zero, shared = SizeVector.Zero, verified = SizeVector.Zero;
+        long distinct = 0, sharedFiles = 0, verifiedFiles = 0;
         foreach (FileFacts file in files)
         {
             int inside = file.Entries.Count(e => InSubtree(model.Files[e].Dir));
@@ -56,6 +60,11 @@ public static class Oracle
                 shared += file.Size;
                 sharedFiles++;
             }
+            else if (file.LinkCountKnown)
+            {
+                verified += file.Size;
+                verifiedFiles++;
+            }
         }
 
         var discoveredInSubtree = log.Discovered.Keys.Where(InSubtree).ToList();
@@ -70,9 +79,11 @@ public static class Oracle
         return new ExpectedTotals(
             size,
             shared,
+            verified,
             log.EmittedFiles.Count(f => InSubtree(model.Files[f].Dir)),
             distinct,
             sharedFiles,
+            verifiedFiles,
             discoveredInSubtree.Count - 1,
             coverage);
     }
@@ -109,7 +120,8 @@ public static class Oracle
                 {
                     FileSpec spec = model.Files[entry];
                     MeasurementCaveats caveats = policy.Effective(spec.Caveats, hasFileId: false);
-                    result.Add(new FileFacts(policy.ToVector(spec.Logical, spec.Allocated, caveats), entry, 1, [entry]));
+                    result.Add(new FileFacts(
+                        policy.ToVector(spec.Logical, spec.Allocated, caveats), entry, 1, !policy.FileSystemSupportsHardLinks, [entry]));
                 }
 
                 continue;
@@ -130,8 +142,9 @@ public static class Oracle
                 .ThenBy(e => ExtensionTable.Normalize(model.Files[e].Name), StringComparer.Ordinal)
                 .First();
             FileSpec c = model.Files[canonical];
-            long totalLinks = Math.Max(entries.Count, specs.Max(s => (long)s.LinkCount));
-            result.Add(new FileFacts(policy.ToVector(c.Logical, c.Allocated, union), canonical, totalLinks, entries));
+            long measured = specs.Max(s => (long)s.LinkCount);
+            long totalLinks = Math.Max(entries.Count, measured);
+            result.Add(new FileFacts(policy.ToVector(c.Logical, c.Allocated, union), canonical, totalLinks, measured > 0, entries));
         }
 
         return result;

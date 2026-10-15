@@ -72,8 +72,8 @@ public sealed class AccountingPropertyTests
 
     /// <summary>
     /// Structural invariants that follow from the semantics, checked independently of the oracle:
-    /// shared ⊆ size; uncertain ⊆ allocated; parent ≤ own + Σ children (sub-additive, not additive);
-    /// exclusive is super-additive; extension totals sum to the root.
+    /// shared, verified-exclusive and unknown partition size; uncertain ⊆ allocated; parent ≤ own + Σ children
+    /// (sub-additive, not additive); verified-exclusive is super-additive; extension totals sum to the root.
     /// </summary>
     [Fact]
     public void Structural_invariants_hold() =>
@@ -87,13 +87,16 @@ public sealed class AccountingPropertyTests
             foreach (DirectoryTotals t in totals.Values)
             {
                 AssertWithin(SizeVector.Zero, t.Shared, t.Size);
+                AssertWithin(SizeVector.Zero, t.ExclusiveVerified, t.Size);
+                AssertWithin(SizeVector.Zero, t.LinkStatusUnknown, t.Size);
+                Assert.InRange(t.LinkStatusUnknownFiles, 0, t.DistinctFiles);
                 Assert.InRange(t.Size.UncertainAllocated, 0, t.Size.Allocated);
                 Assert.InRange(t.SharedFiles, 0, t.DistinctFiles);
                 Assert.InRange(t.DistinctFiles, 0, t.FileEntries);
 
                 DirectoryRecord record = run.Store.Records[t.Id];
                 SizeVector childSum = children[t.Id].Aggregate(record.Own, (acc, ch) => acc + ch.Size);
-                SizeVector childExclusive = children[t.Id].Aggregate(SizeVector.Zero, (acc, ch) => acc + ch.Exclusive);
+                SizeVector childExclusive = children[t.Id].Aggregate(SizeVector.Zero, (acc, ch) => acc + ch.ExclusiveVerified);
                 // Own is per-entry; when links disagree on size the canonical size can exceed an entry's size,
                 // so sub-additivity is only a theorem for consistent link sizes.
                 if (run.Accounting.Reconciliation is null or { FilesWithInconsistentLinkSizes: 0 })
@@ -101,7 +104,7 @@ public sealed class AccountingPropertyTests
                     Assert.True(t.Size.Allocated <= childSum.Allocated && t.Size.Logical <= childSum.Logical, "sub-additivity");
                 }
 
-                Assert.True(t.Exclusive.Allocated >= childExclusive.Allocated, "exclusive super-additivity");
+                Assert.True(t.ExclusiveVerified.Allocated >= childExclusive.Allocated, "verified-exclusive super-additivity");
             }
 
             DirectoryTotals root = run.Accounting.Root;
@@ -143,6 +146,8 @@ public sealed class AccountingPropertyTests
             DirectoryTotals actual = run.TotalsFor(dir);
             Assert.Equal(expected.Size, actual.Size);
             Assert.Equal(expected.Shared, actual.Shared);
+            Assert.Equal(expected.ExclusiveVerified, actual.ExclusiveVerified);
+            Assert.Equal(expected.ExclusiveVerifiedFiles, actual.ExclusiveVerifiedFiles);
             Assert.Equal(expected.FileEntries, actual.FileEntries);
             Assert.Equal(expected.DistinctFiles, actual.DistinctFiles);
             Assert.Equal(expected.SharedFiles, actual.SharedFiles);

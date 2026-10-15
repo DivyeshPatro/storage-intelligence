@@ -3,12 +3,25 @@ namespace StorageIntelligence.Accounting;
 /// <summary>Correction for one directory's subtree totals, produced by reconciliation.</summary>
 /// <param name="Delta">Added to the streaming subtree totals to get distinct-file totals. Usually negative.</param>
 /// <param name="DistinctFilesDelta">Added to the subtree's file-entry count to get its distinct-file count.</param>
-/// <param name="Shared">Bytes of distinct files in this subtree that also have a link outside it.</param>
+/// <param name="Shared">Bytes of distinct files in this subtree known to have a link outside it.</param>
 /// <param name="SharedFiles">Number of such files.</param>
-public readonly record struct DirectoryAdjustment(SizeVector Delta, long DistinctFilesDelta, SizeVector Shared, long SharedFiles)
+/// <param name="VerifiedDelta">Correction to the streaming verified-exclusive totals.</param>
+/// <param name="VerifiedFilesDelta">Correction to the streaming verified-exclusive file count.</param>
+public readonly record struct DirectoryAdjustment(
+    SizeVector Delta,
+    long DistinctFilesDelta,
+    SizeVector Shared,
+    long SharedFiles,
+    SizeVector VerifiedDelta = default,
+    long VerifiedFilesDelta = 0)
 {
-    public static DirectoryAdjustment operator +(DirectoryAdjustment a, DirectoryAdjustment b) =>
-        new(a.Delta + b.Delta, a.DistinctFilesDelta + b.DistinctFilesDelta, a.Shared + b.Shared, a.SharedFiles + b.SharedFiles);
+    public static DirectoryAdjustment operator +(DirectoryAdjustment a, DirectoryAdjustment b) => new(
+        a.Delta + b.Delta,
+        a.DistinctFilesDelta + b.DistinctFilesDelta,
+        a.Shared + b.Shared,
+        a.SharedFiles + b.SharedFiles,
+        a.VerifiedDelta + b.VerifiedDelta,
+        a.VerifiedFilesDelta + b.VerifiedFilesDelta);
 
     public static DirectoryAdjustment Add(DirectoryAdjustment left, DirectoryAdjustment right) => left + right;
 }
@@ -49,7 +62,7 @@ public static class HardLinkReconciler
 
         var adjustments = new Dictionary<DirectoryId, DirectoryAdjustment>();
         var extensionDeltas = new Dictionary<int, ExtensionStats>();
-        var ancestors = new Dictionary<DirectoryId, (int Count, SizeVector Sum)>();
+        var ancestors = new Dictionary<DirectoryId, Arrivals>();
         long multi = 0, linkEntries = 0, outside = 0, outsideBytes = 0, inconsistent = 0, processed = 0;
 
         foreach (IReadOnlyList<LinkRecord> group in groups)
@@ -98,12 +111,17 @@ public static class HardLinkReconciler
             foreach (LinkRecord r in group)
             {
                 SizeVector occurrence = policy.ToVector(r.LogicalSize, r.AllocatedSize, r.EffectiveFlags);
+                bool streamedAsVerified = policy.IsVerifiedSingleLink(hasFileId: true, r.LinkCount);
                 DirectoryId current = r.Directory;
                 int guard = 0;
                 while (true)
                 {
-                    ancestors.TryGetValue(current, out (int Count, SizeVector Sum) a);
-                    ancestors[current] = (a.Count + 1, a.Sum + occurrence);
+                    ancestors.TryGetValue(current, out Arrivals a);
+                    ancestors[current] = new Arrivals(
+                        a.Count + 1,
+                        a.Sum + occurrence,
+                        streamedAsVerified ? a.VerifiedCount + 1 : a.VerifiedCount,
+                        streamedAsVerified ? a.VerifiedSum + occurrence : a.VerifiedSum);
                     if (!parents.TryGetParent(current, out DirectoryId parent))
                     {
                         break;
@@ -117,15 +135,21 @@ public static class HardLinkReconciler
                 }
             }
 
-            foreach ((DirectoryId dir, (int count, SizeVector sum)) in ancestors)
+            // A file is verified-exclusive to a subtree only when its link count was measured and every link is
+            // inside the subtree. With an unmeasured count, links may exist where the scan cannot see them.
+            bool linkCountMeasured = reportedLinks > 0;
+            foreach ((DirectoryId dir, Arrivals a) in ancestors)
             {
-                bool shared = count < totalLinks;
+                bool shared = a.Count < totalLinks;
+                bool verified = !shared && linkCountMeasured;
                 var adjustment = new DirectoryAdjustment(
-                    canonicalSize - sum,
-                    1 - count,
+                    canonicalSize - a.Sum,
+                    1 - a.Count,
                     shared ? canonicalSize : SizeVector.Zero,
-                    shared ? 1 : 0);
-                if (adjustment.Delta.IsZero && adjustment.DistinctFilesDelta == 0 && adjustment.SharedFiles == 0)
+                    shared ? 1 : 0,
+                    (verified ? canonicalSize : SizeVector.Zero) - a.VerifiedSum,
+                    (verified ? 1 : 0) - a.VerifiedCount);
+                if (adjustment == default)
                 {
                     continue;
                 }
@@ -185,6 +209,8 @@ public static class HardLinkReconciler
 
         return string.CompareOrdinal(extensions.NameOf(candidate.ExtensionId), extensions.NameOf(current.ExtensionId)) < 0;
     }
+
+    private readonly record struct Arrivals(int Count, SizeVector Sum, int VerifiedCount, SizeVector VerifiedSum);
 
     private static void Accumulate(Dictionary<int, ExtensionStats> map, int key, ExtensionStats delta) =>
         map[key] = map.GetValueOrDefault(key) + delta;

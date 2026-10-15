@@ -92,8 +92,10 @@ public sealed class AccountingScenarioTests
         Assert.Equal(10 * S, tSys.Size.Allocated);
         Assert.Equal(11 * S, a.Root.Size.Allocated); // not 21 MB: siblings are not additive
         Assert.Equal(10 * S, tSxs.Shared.Allocated);
-        Assert.Equal(1 * S, tSxs.Exclusive.Allocated);
-        Assert.Equal(0, tSys.Exclusive.Allocated);
+        Assert.Equal(0, tSxs.ExclusiveVerified.Allocated); // only-sxs.dll's link count was never measured
+        Assert.Equal(1 * S, tSxs.LinkStatusUnknown.Allocated);
+        Assert.Equal(0, tSys.ExclusiveVerified.Allocated);
+        Assert.Equal(0, tSys.LinkStatusUnknown.Allocated);
         Assert.Equal(SizeVector.Zero, a.Root.Shared);
         Assert.Equal(a.Root.Size.Allocated, a.ExtensionTotals[".dll"].Size.Allocated);
         Assert.Equal(3, a.ExtensionTotals[".dll"].FileEntries);
@@ -135,7 +137,7 @@ public sealed class AccountingScenarioTests
 
         Assert.Equal(3 * S, a.Root.Size.Allocated);
         Assert.Equal(3 * S, a.Root.Shared.Allocated);
-        Assert.Equal(0, a.Root.Exclusive.Allocated);
+        Assert.Equal(0, a.Root.ExclusiveVerified.Allocated);
         Assert.Equal(1, a.Reconciliation!.FilesWithLinksOutsideScope);
     }
 
@@ -382,5 +384,74 @@ public sealed class AccountingScenarioTests
         _ = agg.Complete();
 
         Assert.Equal("big.iso", Assert.Single(store.RetainedFiles).File.Name);
+    }
+
+    [Fact]
+    public void Unmeasured_link_counts_are_never_claimed_exclusive()
+    {
+        var h = new Harness();
+        DirectoryId root = h.Aggregator.BeginRoot("C:");
+        h.File(root, "unmeasured.bin", 1, S);
+        h.File(root, "measured-single.bin", 2, 2 * S, links: 1);
+        h.Aggregator.EndListing(root);
+        ScanAccounting a = h.Finish();
+
+        Assert.Equal(2 * S, a.Root.ExclusiveVerified.Allocated);
+        Assert.Equal(1, a.Root.ExclusiveVerifiedFiles);
+        Assert.Equal(S, a.Root.LinkStatusUnknown.Allocated);
+        Assert.Equal(1, a.Root.LinkStatusUnknownFiles);
+        Assert.Equal(0, a.Root.Shared.Allocated);
+    }
+
+    [Fact]
+    public void A_measured_link_count_proves_exclusivity_where_all_links_are_inside()
+    {
+        var h = new Harness();
+        DirectoryId root = h.Aggregator.BeginRoot("C:");
+        DirectoryId x = h.Aggregator.DiscoverDirectory(root, "x");
+        DirectoryId y = h.Aggregator.DiscoverDirectory(root, "y");
+        h.Aggregator.EndListing(root);
+        h.File(x, "a.vhdx", 8, 4 * S, links: 2);
+        h.Aggregator.EndListing(x);
+        h.File(y, "b.vhdx", 8, 4 * S); // second link; count measured on the other entry only
+        h.Aggregator.EndListing(y);
+        ScanAccounting a = h.Finish();
+
+        Assert.Equal(4 * S, h.Totals(a, x).Shared.Allocated);
+        Assert.Equal(4 * S, h.Totals(a, y).Shared.Allocated);
+        Assert.Equal(4 * S, a.Root.ExclusiveVerified.Allocated); // both of the 2 measured links are under the root
+        Assert.Equal(0, a.Root.LinkStatusUnknown.Allocated);
+    }
+
+    [Fact]
+    public void Filesystems_without_hard_links_are_verified_exclusive()
+    {
+        var policy = new MeasurementPolicy { FileSystem = FileSystemKind.ExFat, FileSystemValidated = true, FileSystemSupportsHardLinks = false };
+        var store = new InMemoryScanStore();
+        var agg = new ScanAggregator(new AggregatorOptions { Policy = policy }, store, links: null);
+        DirectoryId root = agg.BeginRoot("E:");
+        agg.AddFile(root, new FileObservation("a.jpg", null, S, S));
+        agg.EndListing(root);
+        ScanAccounting a = ScanAccounting.Build(agg.Complete(), store, null, policy);
+
+        Assert.Equal(S, a.Root.ExclusiveVerified.Allocated);
+        Assert.Equal(0, a.Root.LinkStatusUnknown.Allocated);
+    }
+
+    [Fact]
+    public void Inconsistent_observations_stay_uncertain_even_if_the_policy_trusts_everything()
+    {
+        var trusting = Validated with { UncertainReasons = MeasurementCaveats.None };
+        var h = new Harness(trusting);
+        DirectoryId root = h.Aggregator.BeginRoot("C:");
+        h.File(root, "a.log", 3, S);
+        h.File(root, "b.log", 3, 2 * S);
+        h.File(root, "c.log", 4, S, MeasurementCaveats.ChangedDuringScan);
+        h.File(root, "d.log", 5, S);
+        h.Aggregator.EndListing(root);
+        ScanAccounting a = h.Finish();
+
+        Assert.Equal(4 * S, a.Root.Size.Allocated);
+        Assert.Equal(3 * S, a.Root.Size.UncertainAllocated); // canonical 2 MB (inconsistent) + 1 MB (changed)
     }
 }
