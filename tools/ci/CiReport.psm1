@@ -3,7 +3,7 @@
 Set-StrictMode -Version Latest
 
 function Write-CiAnnotation {
-    param([Parameter(Mandatory)] [string] $Title, [Parameter(Mandatory)] [string[]] $Lines)
+    param([Parameter(Mandatory)] [string] $Title, [Parameter(Mandatory)] [AllowEmptyString()] [AllowEmptyCollection()] [string[]] $Lines)
     $chunk = New-Object System.Collections.Generic.List[string]
     $size = 0
     $part = 1
@@ -21,4 +21,11 @@ function Write-CiAnnotation {
     }
 }
 
-Export-ModuleMember -Function Write-CiAnnotation
+# Reports an unhandled script error as an error annotation so failures are diagnosable via the API.
+function Write-CiError([Parameter(Mandatory)] $ErrorRecord) {
+    $text = ($ErrorRecord | Out-String) + "`n" + $ErrorRecord.ScriptStackTrace
+    $msg = $text.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+    Write-Output "::error title=script failure::$msg"
+}
+
+Export-ModuleMember -Function Write-CiAnnotation, Write-CiError

@@ -6,6 +6,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'TestVolumes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'CiReport.psm1') -Force
+trap { Write-CiError $_; exit 1 }
 Assert-DisposableEnvironment
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
