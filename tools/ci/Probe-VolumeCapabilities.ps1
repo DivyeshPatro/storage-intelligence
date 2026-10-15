@@ -66,6 +66,11 @@ foreach ($fs in 'NTFS', 'ReFS', 'FAT32', 'exFAT') {
             if (-not ((Get-Item $c).Attributes -band [IO.FileAttributes]::Compressed)) { throw 'Compressed attribute not set' }
             'Compressed attribute set'
         }
+        if ($fs -eq 'NTFS') {
+            $entry.features += Test-Feature 'wof_filter_attach' {
+                Invoke-Native fltmc.exe @('attach', 'wof', $vol.Root.Substring(0, 2))
+            }
+        }
         $entry.features += Test-Feature 'wof_compression' {
             $w = Join-Path $dir 'wof.txt'
             Set-Content -Path $w -Value ('windows overlay filter ' * 50000) -Encoding ascii
@@ -100,8 +105,8 @@ foreach ($base in @($env:RUNNER_TEMP, [IO.Path]::GetTempPath())) {
         Set-Content -Path $w -Value ('windows overlay filter ' * 50000) -Encoding ascii
         try {
             $out = Invoke-Native compact.exe @('/c', '/exe:xpress4k', $w)
-            $q = Invoke-Native fsutil @('reparsepoint', 'query', $w)
-            if ($q -notmatch '0x80000017') { throw "WOF reparse tag not present: $out $q" }
+            $q = & fsutil reparsepoint query $w 2>&1 | Out-String
+            if ($q -notmatch '0x80000017') { throw "WOF reparse tag not present. compact said: $out" }
             'IO_REPARSE_TAG_WOF present'
         }
         finally { Remove-Item $w -Force -ErrorAction SilentlyContinue }
@@ -128,3 +133,4 @@ Set-Content -Path (Join-Path $OutDir 'capabilities.md') -Value $md -Encoding utf
 if ($env:GITHUB_STEP_SUMMARY) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $md }
 $md | Write-Output
 Write-CiAnnotation -Title "volume-capabilities $env:ImageOS" -Lines $md
+exit 0
