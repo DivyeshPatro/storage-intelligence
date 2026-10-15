@@ -94,7 +94,7 @@ Copies of every run's annotations are in [validation-logs/](validation-logs/).
 
 ## 6. Open: intermittent uncertainty difference on FAT32
 
-In 2 of 13 FAT32 validations (0 of 13 exFAT, 0 of 16 NTFS, 0 of 4 ReFS), the low-impact and fast scans with all link
+In 2 of 16 FAT32 validations (0 of 16 exFAT, 0 of 16 NTFS, 0 of 10 ReFS; runs 38709645699 through 38712914822), the low-impact and fast scans with all link
 counts disagreed **only in uncertainty**: one scan marked some files `ChangedDuringScan` (their timestamps were at or
 after the scan start) and the other did not. Sizes, counts, link classification and coverage were identical.
 
