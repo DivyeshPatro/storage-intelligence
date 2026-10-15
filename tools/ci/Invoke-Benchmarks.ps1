@@ -138,8 +138,20 @@ try {
     }
 
     # --- Summary -------------------------------------------------------------------------------------------------------
+    # Raw metrics first (timelines removed), so no summarizer failure can lose the measurements.
+    $raw = foreach ($f in Get-ChildItem $OutDir -Filter *.json | Sort-Object Name) {
+        $j = Get-Content $f.FullName -Raw | ConvertFrom-Json
+        if ($j.PSObject.Properties.Name -contains 'Timeline') { $j.PSObject.Properties.Remove('Timeline') }
+        if ($j.PSObject.Properties.Name -contains 'Trials') { $j.PSObject.Properties.Remove('Trials') }
+        if ($j.PSObject.Properties.Name -contains 'Environment') { $j.PSObject.Properties.Remove('Environment') }
+        "$($f.BaseName): $($j | ConvertTo-Json -Depth 4 -Compress)"
+    }
+    Write-CiAnnotation -Title "raw $title" -Lines $raw
+
+    $env:PYTHONIOENCODING = 'utf-8'
     $summary = & python (Join-Path $PSScriptRoot '..\bench\summarize-windows.py') $OutDir
-    $summary | Set-Content (Join-Path $OutDir 'summary.md')
+    if ($LASTEXITCODE -ne 0) { throw "summarizer failed ($LASTEXITCODE)" }
+    $summary | Set-Content (Join-Path $OutDir 'summary.md') -Encoding utf8
     Write-CiAnnotation -Title $title -Lines $summary
 }
 catch {
