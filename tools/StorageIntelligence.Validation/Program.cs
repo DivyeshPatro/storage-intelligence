@@ -146,7 +146,11 @@ int Validate()
     {
         List<string> differences = ModeDifferences(results[a], results[b]);
         passed &= differences.Count == 0;
-        lines.Add($"- {a} vs {b}: {(differences.Count == 0 ? "identical" : $"**{differences.Count} differences**: " + string.Join("; ", differences.Take(10)))}");
+        lines.Add($"- {a} vs {b}: {(differences.Count == 0 ? "identical" : $"**{differences.Count} differences**:")}");
+        foreach (string difference in differences.Take(20))
+        {
+            lines.Add($"  - {difference}");
+        }
     }
 
     lines.Add("");
@@ -216,7 +220,7 @@ static List<string> ModeDifferences(ScanResult a, ScanResult b)
         }
         else if (ta != tb)
         {
-            differences.Add($"{path}: {ta.Size.Allocated} vs {tb.Size.Allocated}");
+            differences.Add($"{(path.Length == 0 ? "(root)" : path)}: {FieldDifferences(ta, tb)}");
         }
     }
 
@@ -228,6 +232,22 @@ static List<string> ModeDifferences(ScanResult a, ScanResult b)
     return differences;
 
     static DirectoryTotals Strip(DirectoryTotals t) => t with { Id = default, Parent = null };
+
+    // Names every differing field, so a mode difference is diagnosable from the summary alone.
+    static string FieldDifferences(DirectoryTotals a, DirectoryTotals b)
+    {
+        var parts = new List<string>();
+        foreach (System.Reflection.PropertyInfo property in typeof(DirectoryTotals).GetProperties())
+        {
+            object? va = property.GetValue(a), vb = property.GetValue(b);
+            if (!Equals(va, vb))
+            {
+                parts.Add($"{property.Name} {va} vs {vb}");
+            }
+        }
+
+        return string.Join("; ", parts);
+    }
 }
 
 object Report(ScanResult r) => new
