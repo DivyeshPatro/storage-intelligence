@@ -8,7 +8,22 @@ Primary evidence run: `m0b-validation` run **38711178827** (commit `6668317`). R
 `tools/ci/run-annotations.sh 38711178827`; artifacts (JSON for every scan, comparison, reference scan, manifest and
 allocation trial) are in the GitHub UI for the retention period.
 
-## 1. Production scanner vs independent reference scanner
+## How to read this document
+
+Two different kinds of evidence are reported, and they must not be confused:
+
+| | Section 1: production vs reference | Section 2: allocation validation |
+|---|---|---|
+| Question answered | Does the production scanner traverse, count, deduplicate and classify **exactly what an independent implementation measures**? | Does the allocation a scanner reports equal the **storage the file actually consumes**? |
+| Ground truth | None: both scanners read sizes supplied by the same filesystem driver (directory listing vs per-file handle) | Independent: the change in the volume's free space when the file is created |
+| What a pass proves | Traversal, reparse handling, coverage, hard-link reconciliation, extension totals and scan-mode equivalence are implemented correctly | The filesystem's reported allocation is trustworthy **for that case on that filesystem** |
+| What a pass does **not** prove | That reported allocation equals real disk usage | Anything about cases or filesystems not tested |
+
+Example: **ReFS passes section 1 with 0 mismatches, yet its allocation failed section 2.** The scanner reports ReFS
+allocation faithfully, but that allocation does not match the free space consumed, so ReFS bytes remain uncertain.
+Only section 2 results feed `MeasurementEvidence`.
+
+## 1. Production scanner vs independent reference scanner (agreement between implementations)
 
 The fixture (seed 1, about 5,060 files and 37 directories) is generated on a fresh disposable volume per filesystem.
 Each row is four production scans, low-impact and fast modes, each with link counts measured for retained files only
@@ -30,7 +45,7 @@ directories, not-followed links, skipped reparse directories, entry errors, and 
 all link counts are measured; subset relations otherwise). Per file: logical size, allocated size (listing vs
 handle), sparse, compressed and WOF detection, and link counts.
 
-## 2. Allocated-size semantics (settled free-space change on an idle disposable volume)
+## 2. Allocated-size semantics: independent validation (settled free-space change on an idle disposable volume)
 
 Each trial creates one file in a fresh folder and compares the **settled** change in volume free space (after a volume
 flush and a 3-second stable reading) with three sources: the directory listing, `FILE_STANDARD_INFO.AllocationSize` on
@@ -94,12 +109,47 @@ Copies of every run's annotations are in [validation-logs/](validation-logs/).
 
 ## 6. Open: intermittent uncertainty difference on FAT32
 
-In 2 of 16 FAT32 validations (0 of 16 exFAT, 0 of 16 NTFS, 0 of 10 ReFS; runs 38709645699 through 38712914822), the low-impact and fast scans with all link
-counts disagreed **only in uncertainty**: one scan marked some files `ChangedDuringScan` (their timestamps were at or
-after the scan start) and the other did not. Sizes, counts, link classification and coverage were identical.
+**Status: open, cause not proven.** In 2 of 16 FAT32 validations (0 of 16 exFAT, 0 of 16 NTFS, 0 of 10 ReFS; runs
+38709645699 through 38712914822), the low-impact and fast scans with all link counts disagreed **only in
+uncertainty**: one scan marked some files `ChangedDuringScan` and the other did not. Sizes, counts, link
+classification and coverage were identical. Until explained, scan-mode equivalence on FAT32 is established for sizes,
+counts and coverage but **not** for the uncertainty classification.
 
-The scanner behaved as specified: a file whose timestamps are newer than the scan start is reported as changed and
-its bytes are uncertain. Something updated the timestamps of fixture files on FAT32 between scans; candidates are the
-runner's real-time antivirus or FAT's timestamp/last-access handling. **The cause is not proven.** Until it is, scan-mode
-equivalence on FAT32 is established for sizes, counts and coverage but not for the uncertainty classification. A
-diagnostic that records the timestamps the scanner compared is the next step.
+### The exact comparison that produced the flag
+
+In `WindowsScanner.Observe`, a file is marked `ChangedDuringScan` when
+
+```
+entry.ChangeTime >= scanStartFileTime  ||  entry.LastWriteTime >= scanStartFileTime
+```
+
+where `scanStartFileTime = DateTime.UtcNow.ToFileTimeUtc()` taken once at scan start, and `ChangeTime` /
+`LastWriteTime` are the raw 100-ns FILETIME values from the directory listing. On FAT32 the listing class is
+`FILE_FULL_DIR_INFO`. Separately, with `LinkCounts = All` on hard-link filesystems the scanner compares
+`FILE_STANDARD_INFO` with the listing, but on FAT32 no file is opened, so only the timestamp comparison applies.
+
+### What must be recorded to investigate (per flagged file, in both scans)
+
+1. `scanStartFileTime` (UTC FILETIME), plus the wall-clock and `Stopwatch` timestamps of scan start and of the listing
+   call that returned the entry.
+2. The raw listing values `CreationTime`, `LastAccessTime`, `LastWriteTime`, `ChangeTime` (FILETIME, unconverted).
+3. The same four values from `FILE_BASIC_INFO` on a metadata handle immediately after the listing, to detect whether
+   the listing and the handle disagree.
+4. The values from the previous scan of the same file (each validation runs four scans), to show which field moved
+   and by how much.
+5. The fixture generator's write time for the file, the volume's time-zone setting, and `fsutil behavior query
+   disablelastaccess`.
+6. Microsoft Defender activity on the volume during the run (`Get-MpComputerStatus`, Defender operational event log),
+   since real-time scanning opens files.
+
+### Hypotheses each comparison can confirm or reject
+
+| Hypothesis | Signature in the recorded values |
+|---|---|
+| FAT's 2-second write-time granularity rounds a just-written file's time **up** past `scanStartFileTime` | `LastWriteTime` > fixture write time, by less than 2 s, and ≥ scan start; first scans only |
+| FAT stores local time; conversion to UTC differs between the generator and the listing | Constant offset (whole hours) between write time and listing value |
+| Something rewrote the directory entry between scans (e.g. an antivirus open updating last-access) | `ChangeTime` or `LastWriteTime` changes between scans with no write by the fixture |
+| FastFat derives `ChangeTime` from another field | Listing `ChangeTime` equals `LastAccessTime` or another field, and moves with it |
+
+Until the investigation is done, the scanner's behaviour stays as specified: a file whose timestamps are at or after
+the scan start is reported as changed and its bytes are uncertain.
