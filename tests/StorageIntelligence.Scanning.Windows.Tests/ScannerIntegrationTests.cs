@@ -26,6 +26,14 @@ public sealed class ScannerIntegrationTests : IDisposable
 
     private string Fixture => Path.Combine(_root, "fixture");
 
+    /// <summary>Runs a scan with a watchdog so a scanner hang fails the test quickly instead of stalling CI.</summary>
+    private static ScanResult ScanWithWatchdog(string root, ScanOptions options, CancellationToken token = default)
+    {
+        Task<ScanResult> scan = Task.Run(() => WindowsScanner.Scan(root, options, token));
+        Assert.True(scan.Wait((int)TimeSpan.FromMinutes(2).TotalMilliseconds, CancellationToken.None), $"scan did not finish within 2 minutes (mode {options.Mode}, links {options.LinkCounts})");
+        return scan.Result;
+    }
+
     public void Dispose()
     {
         if (_manifest is not null)
@@ -74,7 +82,7 @@ public sealed class ScannerIntegrationTests : IDisposable
             foreach (LinkCountMeasurement links in new[] { LinkCountMeasurement.RetainedFiles, LinkCountMeasurement.All })
             {
                 var files = new List<ProductionFile>();
-                ScanResult scan = WindowsScanner.Scan(Fixture, new ScanOptions
+                ScanResult scan = ScanWithWatchdog(Fixture, new ScanOptions
                 {
                     Mode = mode,
                     LinkCounts = links,
@@ -91,7 +99,7 @@ public sealed class ScannerIntegrationTests : IDisposable
     {
         ReferenceResult before = ReferenceScanner.Scan(Fixture, "NTFS");
         Dictionary<string, (long, long, uint)> snapshot = Snapshot(Fixture);
-        _ = WindowsScanner.Scan(Fixture, new ScanOptions { Mode = ScanMode.Fast, LinkCounts = LinkCountMeasurement.All });
+        _ = ScanWithWatchdog(Fixture, new ScanOptions { Mode = ScanMode.Fast, LinkCounts = LinkCountMeasurement.All });
         ReferenceResult after = ReferenceScanner.Scan(Fixture, "NTFS");
 
         Assert.Equal(snapshot, Snapshot(Fixture));
@@ -103,7 +111,7 @@ public sealed class ScannerIntegrationTests : IDisposable
     [WindowsFact]
     public void Junction_loop_terminates_and_link_targets_are_not_counted()
     {
-        ScanResult scan = WindowsScanner.Scan(Fixture, new ScanOptions());
+        ScanResult scan = ScanWithWatchdog(Fixture, new ScanOptions());
         Assert.DoesNotContain(scan.DirectoryPaths.Values, p => p.StartsWith("junctions\\", StringComparison.Ordinal) && p != "junctions");
         Assert.DoesNotContain(scan.DirectoryPaths.Values, p => p.StartsWith("symlinks\\", StringComparison.Ordinal));
         Assert.True(scan.Accounting.Root.Coverage.NotFollowedLinks >= 2);
@@ -113,7 +121,7 @@ public sealed class ScannerIntegrationTests : IDisposable
     public void Changes_during_a_listing_are_reported_and_counted_as_uncertain()
     {
         string target = Path.Combine(Fixture, "links", "y.bin");
-        ScanResult scan = WindowsScanner.Scan(Fixture, new ScanOptions
+        ScanResult scan = ScanWithWatchdog(Fixture, new ScanOptions
         {
             PolicyOverride = MeasurementPolicy.Conservative with { FileSystem = FileSystemKind.Ntfs, FileSystemValidated = true, UncertainReasons = MeasurementCaveats.None },
             AfterDirectoryOpened = rel =>
@@ -137,7 +145,7 @@ public sealed class ScannerIntegrationTests : IDisposable
     public void Cancellation_returns_a_partial_result_with_cancelled_directories()
     {
         using var cts = new CancellationTokenSource();
-        ScanResult scan = WindowsScanner.Scan(Fixture, new ScanOptions
+        ScanResult scan = ScanWithWatchdog(Fixture, new ScanOptions
         {
             AfterDirectoryOpened = rel =>
             {
@@ -156,7 +164,7 @@ public sealed class ScannerIntegrationTests : IDisposable
     [WindowsFact]
     public void Insufficient_temp_space_is_reported_as_not_reconciled()
     {
-        ScanResult scan = WindowsScanner.Scan(Fixture, new ScanOptions
+        ScanResult scan = ScanWithWatchdog(Fixture, new ScanOptions
         {
             TempDirectory = _root,
             TempReserveBytes = long.MaxValue / 2,
@@ -171,7 +179,7 @@ public sealed class ScannerIntegrationTests : IDisposable
     [WindowsFact]
     public void Unmeasured_small_links_are_unknown_but_measured_large_links_are_shared()
     {
-        ScanResult scan = WindowsScanner.Scan(Fixture, new ScanOptions { LinkCounts = LinkCountMeasurement.RetainedFiles });
+        ScanResult scan = ScanWithWatchdog(Fixture, new ScanOptions { LinkCounts = LinkCountMeasurement.RetainedFiles });
         DirectoryTotals root = scan.Accounting.Root;
         // links\big.bin (12 MiB, retained) has a measured second link outside the fixture: shared.
         Assert.True(root.Shared.Allocated >= 12L << 20);

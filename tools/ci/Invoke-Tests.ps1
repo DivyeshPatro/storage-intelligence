@@ -11,11 +11,15 @@ git clean -xdf -e TestResults | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-CiAnnotation -Title "build failed $env:ImageOS" -Lines (Get-Content (Join-Path $OutDir 'build.log') | Select-String ' error ' | ForEach-Object { $_.Line }); exit 1 }
 
 $log = Join-Path $OutDir 'test.log'
-& dotnet test -c Release --no-build --logger "console;verbosity=normal" --logger "trx" --results-directory (Join-Path $OutDir 'trx') 2>&1 | Tee-Object -FilePath $log | Out-Null
+& dotnet test -c Release --no-build --blame-hang-timeout 8m --logger "console;verbosity=normal" --logger "trx" --results-directory (Join-Path $OutDir 'trx') 2>&1 | Tee-Object -FilePath $log | Out-Null
 $testExit = $LASTEXITCODE
 
 $lines = @("## Test suite: $env:ImageOS (SI_PBT_ITER=$env:SI_PBT_ITER)", '')
 $lines += Get-Content $log | Select-String -Pattern '(Passed!|Failed!|Skipped!) ' | ForEach-Object { '- ' + $_.Line.Trim() }
+$hang = Get-Content $log | Select-String -Pattern '(hang|Blame|crash|aborted|The active test run was aborted)' | ForEach-Object { $_.Line.Trim() } | Select-Object -First 40
+if ($hang) { $lines += '', '### Hang / abort diagnostics', ''; $lines += $hang }
+$timing = Get-Content $log | Select-String -Pattern '^\s+Passed .* \[(\d+ m )?\d+ s\]' | ForEach-Object { '- ' + $_.Line.Trim() }
+if ($timing) { $lines += '', '### Slow tests (>= 1 s)', ''; $lines += $timing }
 $failures = Get-Content $log | Select-String -Pattern '^\s+Failed ' -Context 0, 12 | ForEach-Object { $_.Line.Trim(); $_.Context.PostContext | ForEach-Object { '    ' + $_.Trim() } }
 if ($failures) { $lines += '', '### Failures', ''; $lines += $failures | Select-Object -First 200 }
 $skipped = Get-Content $log | Select-String -Pattern '^\s+Skipped ' | ForEach-Object { '- ' + $_.Line.Trim() }
