@@ -5,6 +5,7 @@ param([Parameter(Mandatory)] [string] $OutDir)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'TestVolumes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'CiReport.psm1') -Force
 Assert-DisposableEnvironment
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
@@ -102,3 +103,4 @@ foreach ($v in $result.volumes) {
 Set-Content -Path (Join-Path $OutDir 'capabilities.md') -Value $md -Encoding utf8
 if ($env:GITHUB_STEP_SUMMARY) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $md }
 $md | Write-Output
+Write-CiAnnotation -Title "volume-capabilities $env:ImageOS" -Lines $md
