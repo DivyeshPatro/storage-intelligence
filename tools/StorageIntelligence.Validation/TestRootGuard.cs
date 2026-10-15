@@ -49,8 +49,8 @@ public static class TestRootGuard
             return true;
         }
 
-        string? volumeRoot = Path.GetPathRoot(full);
-        if (volumeRoot is not null && string.Equals(full + "\\", volumeRoot, StringComparison.OrdinalIgnoreCase))
+        string? volumeRoot = Path.GetPathRoot(Path.GetFullPath(root));
+        if (IsVolumeRoot(root))
         {
             if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" ||
                 Environment.GetEnvironmentVariable("SI_ALLOW_TEST_VOLUMES") != "1")
@@ -59,13 +59,13 @@ public static class TestRootGuard
                 return false;
             }
 
-            if (!File.Exists(Path.Combine(volumeRoot, VolumeMarker)))
+            if (!File.Exists(Path.Combine(volumeRoot!, VolumeMarker)))
             {
                 reason = $"volume has no {VolumeMarker} marker";
                 return false;
             }
 
-            string label = VolumeLabel(volumeRoot);
+            string label = VolumeLabel(volumeRoot!);
             if (!label.StartsWith("SI", StringComparison.Ordinal))
             {
                 reason = $"volume label '{label}' does not start with SI";
@@ -78,6 +78,15 @@ public static class TestRootGuard
 
         reason = "not a marked temp test root or a disposable CI volume root";
         return false;
+    }
+
+    /// <summary>True for a drive root such as <c>E:\</c> or <c>E:</c>.</summary>
+    internal static bool IsVolumeRoot(string path)
+    {
+        string full = Path.GetFullPath(path.EndsWith(':') ? path + "\\" : path);
+        string? volumeRoot = Path.GetPathRoot(full);
+        return volumeRoot is not null &&
+            string.Equals(full.TrimEnd('\\') + "\\", volumeRoot.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
     }
 
     private static unsafe string VolumeLabel(string volumeRoot)

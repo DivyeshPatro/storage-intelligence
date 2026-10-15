@@ -56,6 +56,16 @@ public sealed class ScannerIntegrationTests : IDisposable
     }
 
     [WindowsFact]
+    public void Volume_roots_are_recognised_but_refused_without_ci_markers()
+    {
+        Assert.True(TestRootGuard.IsVolumeRoot(@"E:\"));
+        Assert.True(TestRootGuard.IsVolumeRoot("E:"));
+        Assert.False(TestRootGuard.IsVolumeRoot(@"E:\fixture"));
+        string systemRoot = Path.GetPathRoot(Environment.SystemDirectory)!;
+        Assert.False(TestRootGuard.IsWritable(systemRoot, out _)); // no marker, wrong label, and tests do not enable test volumes
+    }
+
+    [WindowsFact]
     public void Production_scan_matches_independent_reference_in_every_mode()
     {
         ReferenceResult reference = ReferenceScanner.Scan(Fixture, "NTFS");
